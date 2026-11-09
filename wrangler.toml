@@ -1,6 +1,6 @@
 name = "web-flashcard-on-thi"
+main = "worker.ts"
 compatibility_date = "2024-04-01"
-pages_build_output_dir = "./dist"
 
 # Cấu hình thư mục chứa mã nguồn tĩnh sau khi build cho Cloudflare
 [assets]
