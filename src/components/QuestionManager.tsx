@@ -19,6 +19,7 @@ import {
   FolderTree
 } from 'lucide-react';
 import { Exam, Question, QuestionOption, QuestionType, Topic, User } from '../types';
+import { exportQuestionsToDocx, exportQuestionsToPdf, downloadSampleTemplate } from '../utils/exporters';
 import { storage } from '../utils/storage';
 
 interface QuestionManagerProps {
@@ -54,6 +55,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
   const [editingQuestion, setEditingQuestion] = useState<Partial<Question> | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [modalType, setModalType] = useState<QuestionType>('SINGLE');
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // BR-32: Exam total question count deduplicated
   const stats = storage.getExamQuestionStats(activeExam.id, currentUser.id);
@@ -176,6 +178,37 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     a.download = `certflash_${activeExam.code}_questions.json`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  };
+
+  // Export questions to Word (.docx)
+  const handleExportDocx = async () => {
+    try {
+      await exportQuestionsToDocx(activeExam.title, activeExam.code, questions);
+      setShowExportMenu(false);
+    } catch (err: any) {
+      alert(`Lỗi xuất file Word: ${err.message}`);
+    }
+  };
+
+  // Export questions to PDF (.pdf)
+  const handleExportPdf = async () => {
+    try {
+      await exportQuestionsToPdf(activeExam.title, activeExam.code, questions);
+      setShowExportMenu(false);
+    } catch (err: any) {
+      alert(`Lỗi xuất file PDF: ${err.message}`);
+    }
+  };
+
+  // Clean slate: clear all questions of active exam
+  const handleClearExamQuestions = () => {
+    if (confirm(`Bạn có chắc muốn XÓA TOÀN BỘ ${questions.length} câu hỏi của chứng chỉ ${activeExam.code} để nạp đề mới từ đầu? Thao tác này không thể hoàn tác.`)) {
+      const deleted = storage.clearExamQuestions(activeExam.id, currentUser.id);
+      onRefreshData();
+      alert(`Đã dọn sạch ${deleted} câu hỏi của chứng chỉ ${activeExam.code}. Bây giờ bạn có thể upload đề thi Word/PDF từ đầu.`);
+      setShowExportMenu(false);
+    }
   };
 
   return (
@@ -212,13 +245,71 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
               <span>Tải tệp Word (.docx) / PDF</span>
             </button>
 
-            <button
-              onClick={handleExportJSON}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-2"
-            >
-              <Download className="w-4 h-4 text-blue-400" />
-              <span>Export</span>
-            </button>
+            {/* Export & Download Menu Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-2"
+              >
+                <Download className="w-4 h-4 text-blue-400" />
+                <span>Xuất file / Mẫu</span>
+              </button>
+
+              {showExportMenu && (
+                <div className="absolute right-0 mt-2 w-64 bg-slate-900 border-2 border-slate-700 rounded-2xl shadow-2xl p-2 z-30 space-y-1 text-xs">
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    Xuất câu hỏi hiện có ({questions.length})
+                  </div>
+                  <button
+                    onClick={handleExportDocx}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-white flex items-center gap-2"
+                  >
+                    <span className="text-blue-400 font-bold">📄</span>
+                    <span>Xuất sang Word (.docx)</span>
+                  </button>
+                  <button
+                    onClick={handleExportPdf}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-white flex items-center gap-2"
+                  >
+                    <span className="text-red-400 font-bold">📑</span>
+                    <span>Xuất sang Adobe PDF (.pdf)</span>
+                  </button>
+                  <button
+                    onClick={handleExportJSON}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-white flex items-center gap-2"
+                  >
+                    <span className="text-purple-400 font-bold">⚡</span>
+                    <span>Xuất dữ liệu JSON (.json)</span>
+                  </button>
+
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-t border-b border-slate-800 mt-1">
+                    Tải mẫu định dạng chuẩn
+                  </div>
+                  <button
+                    onClick={() => { downloadSampleTemplate('docx'); setShowExportMenu(false); }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white flex items-center gap-2"
+                  >
+                    <span>📄 File mẫu Word (.docx)</span>
+                  </button>
+                  <button
+                    onClick={() => { downloadSampleTemplate('pdf'); setShowExportMenu(false); }}
+                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white flex items-center gap-2"
+                  >
+                    <span>📑 File mẫu PDF (.pdf)</span>
+                  </button>
+
+                  <div className="border-t border-slate-800 mt-1 pt-1">
+                    <button
+                      onClick={handleClearExamQuestions}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-red-500/20 text-red-400 hover:text-red-300 font-semibold flex items-center gap-2"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Xóa sạch câu hỏi đề này</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="relative group">
               <button

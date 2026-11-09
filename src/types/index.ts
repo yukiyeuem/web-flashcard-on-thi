@@ -196,6 +196,7 @@ export interface ImportPreviewItem {
   raw: IntermediateQuestion;
   isValid: boolean;
   errors: string[];
+  warnings?: string[];
   isDuplicate: boolean;
   duplicateQuestionId?: string;
 }

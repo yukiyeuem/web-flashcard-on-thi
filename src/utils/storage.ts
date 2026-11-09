@@ -583,6 +583,27 @@ class StorageService {
     localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(filtered));
   }
 
+  /**
+   * Delete all questions belonging to an exam (Clean slate for custom dumps)
+   */
+  public clearExamQuestions(examId: string, userId: string): number {
+    const raw = localStorage.getItem(STORAGE_KEYS.QUESTIONS);
+    const all: Question[] = raw ? JSON.parse(raw) : [];
+    const initialCount = all.length;
+    const filtered = all.filter(q => q.exam_id !== examId);
+    localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(filtered));
+    return initialCount - filtered.length;
+  }
+
+  /**
+   * Purge all sample mock data for zero-sample clean start
+   */
+  public clearAllMockExams(userId: string): void {
+    localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify([]));
+  }
+
   // --- Spaced Repetition (SM-2) & Progress ---
 
   public getProgressList(userId: string, examId?: string): QuestionProgress[] {

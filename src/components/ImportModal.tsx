@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DuplicateStrategy, Exam, ImportReport, Topic, User } from '../types';
 import { extractTextFromFile, parseAndValidateImport } from '../utils/importers';
+import { downloadSampleTemplate } from '../utils/exporters';
 import { storage } from '../utils/storage';
 
 interface ImportModalProps {
@@ -223,6 +224,32 @@ Giải thích: Tích hợp với AWS CloudTrail để audit mọi thao tác sử
                   ⚡ JSON (.json)
                 </span>
               </div>
+
+              {/* Template Download Links */}
+              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-center gap-2 text-xs">
+                <span className="text-slate-400 text-[11px]">Tải tệp mẫu chuẩn:</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); downloadSampleTemplate('docx'); }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 font-semibold text-[11px] border border-slate-700 transition"
+                >
+                  📄 File mẫu Word (.docx)
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); downloadSampleTemplate('pdf'); }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-red-400 hover:text-red-300 font-semibold text-[11px] border border-slate-700 transition"
+                >
+                  📑 File mẫu PDF (.pdf)
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); downloadSampleTemplate('txt'); }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition"
+                >
+                  📝 File mẫu Text (.txt)
+                </button>
+              </div>
             </div>
 
             {/* Or Paste Manual Text */}
@@ -361,6 +388,38 @@ Giải thích: Tích hợp với AWS CloudTrail để audit mọi thao tác sử
               </div>
             </div>
 
+            {/* Helper for un-keyed exam dump questions */}
+            {report.items.some(it => it.raw.type !== 'FLASHCARD' && (!it.raw.correct || it.raw.correct.length === 0)) && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="text-amber-200">
+                  <span className="font-bold text-amber-300">💡 Phát hiện đề thi chưa có đáp án:</span> Có{' '}
+                  <span className="font-extrabold text-white">
+                    {report.items.filter(it => it.raw.type !== 'FLASHCARD' && (!it.raw.correct || it.raw.correct.length === 0)).length}
+                  </span>{' '}
+                  câu chưa có đáp án chính thức (phù hợp ôn luyện). Bạn có thể gán tạm đáp án hoặc lưu để tự luyện!
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updatedItems = report.items.map(it => {
+                      if (it.raw.type !== 'FLASHCARD' && (!it.raw.correct || it.raw.correct.length === 0)) {
+                        return {
+                          ...it,
+                          raw: { ...it.raw, correct: ['A'] },
+                          warnings: ['Đã gán tạm đáp án mặc định (A)']
+                        };
+                      }
+                      return it;
+                    });
+                    setReport({ ...report, items: updatedItems });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] shadow-md shrink-0 transition"
+                >
+                  ⚡ Gán tạm đáp án A cho tất cả
+                </button>
+              </div>
+            )}
+
             {/* Items review list */}
             <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
               {report.items.map((item, idx) => (
@@ -391,6 +450,15 @@ Giải thích: Tích hợp với AWS CloudTrail để audit mọi thao tác sử
                       )}
                     </div>
                   </div>
+
+                  {/* Warnings display */}
+                  {item.warnings && item.warnings.length > 0 && (
+                    <div className="text-[11px] text-amber-300 space-y-0.5">
+                      {item.warnings.map((w, wIdx) => (
+                        <div key={wIdx}>💡 {w}</div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Errors display */}
                   {item.errors.length > 0 && (

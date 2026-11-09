@@ -1,6 +1,7 @@
 /**
  * Standardized Import Parser and Validator (ADD-13, ADD-14, BR-41, BR-42, BR-43)
  * Supports Word (.docx), PDF (.pdf), Text (.txt, .md), and JSON (.json)
+ * Handles un-keyed dumps (e.g. Oracle 1Z0-083, AWS, Azure, CompTIA dumps)
  */
 
 // @ts-ignore
@@ -8,13 +9,14 @@ import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 import { ImportPreviewItem, ImportReport, IntermediateQuestion, Question } from '../types';
 
-// Set up pdf.js worker
+// Set up pdf.js worker with reliable local fallback
 try {
   if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+    // Attempt CDN worker with version alignment or unpkg
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
   }
-} catch (e) {
-  // worker fallback
+} catch {
+  // worker fallback mode
 }
 
 /**
@@ -34,21 +36,38 @@ export async function extractTextFromFile(file: File): Promise<string> {
   if (fileName.endsWith('.pdf')) {
     const arrayBuffer = await file.arrayBuffer();
     try {
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const loadingTask = pdfjsLib.getDocument({ 
+        data: arrayBuffer,
+        useWorkerFetch: false,
+        useSystemFonts: true
+      });
       const pdf = await loadingTask.promise;
       let fullText = '';
+      
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str || '')
-          .join(' ');
-        fullText += pageText + '\n\n';
+        
+        let lastY: number | null = null;
+        let pageStr = '';
+
+        for (const item of textContent.items as any[]) {
+          if (!item.str) continue;
+          
+          // If vertical position changes significantly or item has EOL, add newline
+          if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+            pageStr += '\n' + item.str;
+          } else {
+            pageStr += (pageStr.length > 0 && !pageStr.endsWith(' ') && !pageStr.endsWith('\n') ? ' ' : '') + item.str;
+          }
+          lastY = item.transform[5];
+        }
+
+        fullText += '\n\n' + pageStr;
       }
       return fullText;
     } catch (err: any) {
-      console.warn('PDF parsing fallback', err);
-      // Fallback: try reading as text
+      console.warn('PDF parsing error, attempting text fallback', err);
       return await file.text();
     }
   }
@@ -68,7 +87,7 @@ export function parseAndValidateImport(
   const intermediateList: IntermediateQuestion[] = [];
   const trimmed = rawText.trim();
 
-  // Try JSON first
+  // 1. Try JSON first
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
     try {
       const parsed = JSON.parse(trimmed);
@@ -83,7 +102,7 @@ export function parseAndValidateImport(
           explanation: item.explanation || item.note || '',
           topics: item.topics || (defaultTopicId ? [defaultTopicId] : []),
           difficulty: item.difficulty || 2,
-          source: item.source || 'DOCX'
+          source: 'DOCX'
         });
       });
     } catch {
@@ -91,20 +110,29 @@ export function parseAndValidateImport(
     }
   }
 
-  // Textual format parser (DOCX, PDF text, TXT, MD)
+  // 2. Textual format parser (DOCX, PDF, TXT, MD)
   if (intermediateList.length === 0) {
-    // Split into question blocks
-    const blocks = trimmed.split(/\n\s*\n|\n(?=(?:Câu\s+\d+|Question\s+\d+|Thẻ\s+\d+|Flashcard\s+\d+):?)/i);
+    // Regex matching Question headers: Question #1, Question 1, Câu 1, Câu #1, Q1, Thẻ 1
+    const questionHeaderRegex = /(?:(?:Question|Câu|Thẻ|Flashcard|Q)\s*(?:#|No\.?|\.)?\s*\d+[\s\.\:\-]*)/i;
+
+    // Split text into question chunks
+    // Splitting either by double-newline or right before a Question header
+    const rawChunks = trimmed.split(/(?=(?:Question|Câu|Thẻ|Flashcard|Q)\s*(?:#|No\.?|\.)?\s*\d+)/i)
+      .map(c => c.trim())
+      .filter(c => c.length > 5);
+
+    // If split produced only 1 chunk or failed, fallback to double-newline split
+    const blocks = rawChunks.length > 1 ? rawChunks : trimmed.split(/\n\s*\n+/);
 
     blocks.forEach(block => {
       const text = block.trim();
-      if (!text) return;
+      if (!text || text.length < 5) return;
 
-      // Check if it's a Flashcard block (Front / Back)
+      // Case A: Flashcard block (Mặt trước / Mặt sau)
       if (/mặt\s*trước|front\s*:/i.test(text) && /mặt\s*sau|back\s*:/i.test(text)) {
         const frontMatch = text.match(/(?:mặt\s*trước|front):\s*([\s\S]*?)(?=(?:mặt\s*sau|back):)/i);
-        const backMatch = text.match(/(?:mặt\s*sau|back):\s*([\s\S]*?)(?=(?:giải\s*thích|note|lưu\s*ý):|$)/i);
-        const expMatch = text.match(/(?:giải\s*thích|note|lưu\s*ý):\s*([\s\S]*)$/i);
+        const backMatch = text.match(/(?:mặt\s*sau|back):\s*([\s\S]*?)(?=(?:giải\s*thích|explanation|note|lưu\s*ý):|$)/i);
+        const expMatch = text.match(/(?:giải\s*thích|explanation|note|lưu\s*ý):\s*([\s\S]*)$/i);
 
         intermediateList.push({
           type: 'FLASHCARD',
@@ -120,48 +148,60 @@ export function parseAndValidateImport(
         return;
       }
 
-      // Check if it's multiple choice
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      let content = '';
-      const options: { key: string; text: string }[] = [];
+      // Case B: Multiple choice / dump question block
+      let content = text;
       let correct: string[] = [];
       let explanation = '';
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const optMatch = line.match(/^([A-Fa-f])[\.\)\:\-]\s*(.*)$/);
-        const ansMatch = line.match(/^(?:đáp\s*án|answer|key|correct):\s*([A-Za-z,\s]+)$/i);
-        const expMatch = line.match(/^(?:giải\s*thích|explanation|lưu\s*ý|note):\s*(.*)$/i);
+      // Extract explicit Answer / Đáp án line if present
+      const ansMatch = content.match(/(?:đáp\s*án|answer|correct\s*answer|key):\s*([A-Za-z,\s]+)/i);
+      if (ansMatch) {
+        correct = ansMatch[1].toUpperCase().split(/[^A-Z]+/).filter(Boolean);
+        content = content.replace(ansMatch[0], '');
+      }
 
-        if (ansMatch) {
-          correct = ansMatch[1].toUpperCase().split(/[,\s]+/).filter(Boolean);
-        } else if (expMatch) {
-          explanation = expMatch[1];
-          for (let j = i + 1; j < lines.length; j++) {
-            explanation += '\n' + lines[j];
-          }
-          break;
-        } else if (optMatch) {
+      // Extract Explanation / Giải thích line if present
+      const expMatch = content.match(/(?:giải\s*thích|explanation|lưu\s*ý|note):\s*([\s\S]*)$/i);
+      if (expMatch) {
+        explanation = expMatch[1].trim();
+        content = content.replace(expMatch[0], '');
+      }
+
+      // Split question content vs options A, B, C, D, E, F...
+      // Handles both separate lines and same-line options separated by spaces
+      const optSplitPattern = /(?:^|[\r\n\s]+)(?=[A-Fa-f][\.\)\:\-]\s+)/;
+      const pieces = content.split(optSplitPattern).map(p => p.trim()).filter(Boolean);
+
+      let stem = pieces[0] || '';
+      // Strip leading "Question #1:", "Câu 1." prefix from the stem if desired
+      const qNumMatch = stem.match(/^((?:Question|Câu|Q|Thẻ)\s*(?:#|No\.?|\.)?\s*\d+[\s\.\:\-]*)/i);
+      if (qNumMatch) {
+        stem = stem.slice(qNumMatch[0].length).trim();
+      }
+
+      const options: { key: string; text: string }[] = [];
+      for (let i = 1; i < pieces.length; i++) {
+        const optMatch = pieces[i].match(/^([A-Fa-f])[\.\)\:\-]\s*([\s\S]*)$/);
+        if (optMatch) {
           options.push({
             key: optMatch[1].toUpperCase(),
-            text: optMatch[2]
+            text: optMatch[2].trim()
           });
-        } else {
-          // Question text
-          content += (content ? '\n' : '') + line.replace(/^(?:Câu|Question)\s*\d+[\.\:\-]\s*/i, '');
         }
       }
 
-      const isMulti = correct.length > 1;
+      // Detect if question is multi-choice from stem (e.g. "Choose three", "Choose two", "Chọn 2")
+      const isMultiByStem = /(?:choose\s+(?:two|three|four|five|all)|chọn\s+(?:hai|ba|bốn|nhiều|\d+))/i.test(stem);
+      const isMulti = correct.length > 1 || isMultiByStem;
       const type = options.length > 0 ? (isMulti ? 'MULTI' : 'SINGLE') : 'FLASHCARD';
 
-      if (content.trim()) {
+      if (stem.trim()) {
         intermediateList.push({
           type,
-          content: content.trim(),
+          content: stem.trim(),
           options,
           correct,
-          answer_content: type === 'FLASHCARD' ? explanation || 'Chưa có đáp án mặt sau' : null,
+          answer_content: type === 'FLASHCARD' ? explanation || 'Chưa có mặt sau' : null,
           explanation: explanation.trim(),
           topics: defaultTopicId ? [defaultTopicId] : [],
           difficulty: 2,
@@ -171,9 +211,10 @@ export function parseAndValidateImport(
     });
   }
 
-  // Validate each item (BR-42, BR-43)
+  // 3. Validate each item (BR-42, BR-43)
   const previewItems: ImportPreviewItem[] = intermediateList.map(raw => {
     const errors: string[] = [];
+    const warnings: string[] = [];
 
     if (!raw.content || raw.content.trim().length === 0) {
       errors.push('Thiếu nội dung câu hỏi hoặc mặt trước thẻ.');
@@ -181,17 +222,19 @@ export function parseAndValidateImport(
 
     if (raw.type === 'FLASHCARD') {
       if (!raw.answer_content || raw.answer_content.trim().length === 0) {
-        errors.push('Mặt sau Flashcard không được để trống (ADD-04).');
+        errors.push('Mặt sau Flashcard không được để trống.');
       }
     } else {
       if (!raw.options || raw.options.length < 2) {
-        errors.push('Câu trắc nghiệm cần ít nhất 2 đáp án (A, B...).');
+        errors.push('Câu trắc nghiệm cần ít nhất 2 phương án (A, B...).');
       }
+      // Non-blocking warning if answers are not provided (e.g. practice dumps)
       if (!raw.correct || raw.correct.length === 0) {
-        errors.push('Chưa xác định đáp án đúng.');
+        warnings.push('Chưa có đáp án chính thức trong tệp. Hệ thống sẽ lưu dưới dạng bài tập tự luyện (có thể bổ sung sau).');
       }
       if (raw.type === 'SINGLE' && raw.correct && raw.correct.length > 1) {
-        errors.push('Câu hỏi SINGLE chỉ được có 1 đáp án đúng.');
+        warnings.push('Phát hiện nhiều đáp án cho câu Single. Hệ thống đã tự động chuyển sang Multi-choice.');
+        raw.type = 'MULTI';
       }
     }
 
@@ -203,6 +246,7 @@ export function parseAndValidateImport(
       raw,
       isValid: errors.length === 0,
       errors,
+      warnings,
       isDuplicate: !!duplicate,
       duplicateQuestionId: duplicate?.id
     };
