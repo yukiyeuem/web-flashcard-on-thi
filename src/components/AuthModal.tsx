@@ -15,6 +15,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [name, setName] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [simulatedCode, setSimulatedCode] = useState<string | null>(null);
+  const [isEmailSent, setIsEmailSent] = useState(false);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -106,13 +108,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     try {
       setLoading(true);
       const res = await storage.requestOtpWithResend(normEmail, 'LOGIN');
-      setSimulatedCode(res.code);
-      setMode('VERIFY_LOGIN_OTP');
       if (res.emailSent) {
-        setInfo(`✓ Mã OTP đã được gửi thành công đến hòm thư ${email} qua Resend! Vui lòng kiểm tra Inbox hoặc Spam.`);
+        setIsEmailSent(true);
+        setSimulatedCode(null);
+        setErrorDetail(null);
+        setInfo(`✓ Mã OTP 6 số đã được gửi thành công đến hòm thư ${email} qua Resend!`);
       } else {
-        setInfo(res.message || `Mã OTP đăng nhập của bạn: ${res.code}`);
+        setIsEmailSent(false);
+        setSimulatedCode(res.code);
+        setErrorDetail(res.errorDetail || null);
+        setInfo(null);
       }
+      setMode('VERIFY_LOGIN_OTP');
     } catch (err: any) {
       setError(err.message || 'Lỗi khi gửi mã đăng nhập.');
     } finally {
@@ -352,30 +359,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* Form: VERIFY LOGIN OTP (BR-21) */}
         {mode === 'VERIFY_LOGIN_OTP' && (
           <form onSubmit={handleVerifyLoginOtp} className="space-y-4">
-            {/* Notice why OTP is on screen */}
-            <div className="p-3.5 rounded-2xl bg-blue-500/15 border-2 border-blue-500/40 text-xs text-blue-200 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-blue-300">
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <span>Mã OTP đăng nhập an toàn:</span>
+            {/* Resend Success vs Fallback display */}
+            {isEmailSent ? (
+              <div className="p-4 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 text-xs text-emerald-200 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-emerald-300 text-sm">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span>Đã gửi mã OTP qua Resend thành công!</span>
+                </div>
+                <p className="text-slate-300 text-xs leading-relaxed">
+                  Mã OTP bảo mật 6 số đã được chuyển trực tiếp vào hòm thư Gmail của bạn: <strong className="text-white font-mono">{email}</strong>.
+                </p>
+                <p className="text-[11px] text-emerald-400/90 font-medium">
+                  👉 Vui lòng mở ứng dụng Gmail (kiểm tra cả mục Hộp thư đến và mục Spam/Thư rác) và điền mã vào ô bên dưới.
+                </p>
               </div>
-              <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-blue-500/30">
-                <span className="font-mono text-xl font-black text-blue-400 tracking-widest">
-                  {simulatedCode || '123456'}
-                </span>
-                {simulatedCode && (
-                  <button
-                    type="button"
-                    onClick={() => setOtpCode(simulatedCode)}
-                    className="px-3 py-1 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded-lg text-[11px] transition"
-                  >
-                    Tự điền mã này
-                  </button>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 text-xs text-amber-200 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Chưa gửi được mail qua Resend</span>
+                </div>
+                {errorDetail && (
+                  <p className="text-[11px] text-amber-300/90 font-mono bg-slate-900/80 p-2 rounded-lg border border-amber-500/20 break-all">
+                    Chi tiết: {errorDetail}
+                  </p>
                 )}
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  💡 <strong>Cách xử lý:</strong> Trên Cloudflare Pages, sau khi thêm biến môi trường <code className="text-amber-300">RESEND_API_KEY</code>, bạn cần vào tab <strong>Deployments</strong> và bấm <strong>Retry deployment</strong> thì Cloudflare mới nạp biến đó vào server.
+                </p>
+                <div className="pt-1">
+                  <div className="text-[10px] text-slate-400 font-bold mb-1">Mã OTP kiểm thử tạm thời:</div>
+                  <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-amber-500/30">
+                    <span className="font-mono text-xl font-black text-amber-400 tracking-widest">
+                      {simulatedCode || '123456'}
+                    </span>
+                    {simulatedCode && (
+                      <button
+                        type="button"
+                        onClick={() => setOtpCode(simulatedCode)}
+                        className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-[11px] transition"
+                      >
+                        Tự điền mã này
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                ℹ️ <strong>Lý do chưa nhận mail thật:</strong> Ứng dụng chưa cấu hình SMTP mail gateway, mã OTP được cấp an toàn trực tiếp trên giao diện để bạn kiểm tra luồng đăng nhập một lần (Single-use OTP).
-              </p>
-            </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-200 mb-1.5">

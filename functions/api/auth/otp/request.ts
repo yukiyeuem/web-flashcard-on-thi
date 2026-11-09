@@ -32,21 +32,26 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
 
     // 1. Lưu vào Cloudflare D1 nếu có binding DB
     if (env.DB) {
-      await env.DB.prepare(
-        `INSERT INTO otp_codes (id, email, code, purpose, expires_at, consumed_at, attempts)
-         VALUES (?, ?, ?, ?, ?, NULL, 0)`
-      )
-      .bind(`otp-${now}`, email, code, purpose, expiresAt)
-      .run();
+      try {
+        await env.DB.prepare(
+          `INSERT INTO otp_codes (id, email, code, purpose, expires_at, consumed_at, attempts)
+           VALUES (?, ?, ?, ?, ?, NULL, 0)`
+        )
+        .bind(`otp-${now}`, email, code, purpose, expiresAt)
+        .run();
+      } catch (dbErr: any) {
+        console.warn('D1 OTP insert warning:', dbErr);
+      }
     }
 
     // 2. Gửi email qua Resend API nếu có RESEND_API_KEY
     let emailSent = false;
-    let resendError = null;
+    let resendError: any = null;
+    const apiKey = (env.RESEND_API_KEY || '').trim();
 
-    if (env.RESEND_API_KEY) {
+    if (apiKey) {
       try {
-        const fromEmail = env.RESEND_FROM_EMAIL || 'CertFlash <onboarding@resend.dev>';
+        const fromEmail = (env.RESEND_FROM_EMAIL || '').trim() || 'CertFlash <onboarding@resend.dev>';
         const subject = purpose === 'LOGIN'
           ? `[CertFlash] Mã OTP đăng nhập của bạn: ${code}`
           : `[CertFlash] Mã xác minh tài khoản của bạn: ${code}`;
@@ -54,7 +59,7 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
@@ -91,12 +96,13 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
         if (res.ok) {
           emailSent = true;
         } else {
-          const errData = await res.json();
-          resendError = errData;
+          resendError = await res.json();
         }
       } catch (e: any) {
         resendError = e.message;
       }
+    } else {
+      resendError = 'Biến môi trường RESEND_API_KEY chưa có trên bản deployment hiện tại của Cloudflare Pages. Cần bấm Retry deployment sau khi thêm biến.';
     }
 
     return new Response(
@@ -105,9 +111,10 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
         email,
         emailSent,
         simulatedCode: !emailSent ? code : undefined,
+        errorDetail: !emailSent && resendError ? (typeof resendError === 'object' ? JSON.stringify(resendError) : resendError) : null,
         message: emailSent
           ? `Mã OTP đã được gửi thành công đến ${email} qua Resend.`
-          : `Mã OTP xác thực: ${code} (Chưa kết nối RESEND_API_KEY nên hiển thị trực tiếp)`
+          : `Chưa gửi được qua Resend (Mã kiểm thử: ${code})`
       }),
       {
         status: 200,

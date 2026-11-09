@@ -70,22 +70,7 @@ class StorageService {
       }
     }
 
-    if (!localStorage.getItem(STORAGE_KEYS.CURRENT_USER)) {
-      // Default to Lead Admin huyhoangpham387@gmail.com
-      const adminUser = this.getUsers().find(u => u.email.toLowerCase() === 'huyhoangpham387@gmail.com') || SEED_USERS[0];
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminUser));
-    } else {
-      // If current user was the placeholder admin@certflash.io, switch to huyhoangpham387@gmail.com
-      try {
-        const cur: User = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || '{}');
-        if (cur.email === 'admin@certflash.io') {
-          const adminUser = this.getUsers().find(u => u.email.toLowerCase() === 'huyhoangpham387@gmail.com') || SEED_USERS[0];
-          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminUser));
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
+    // Do not auto-login any user. Default state is guest mode requiring login.
 
     if (!localStorage.getItem(STORAGE_KEYS.EXAMS)) {
       localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(SEED_EXAMS));
@@ -115,18 +100,22 @@ class StorageService {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
   }
 
-  public getCurrentUser(): User {
+  public getCurrentUser(): User | null {
     const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-    if (!raw) {
-      const defaultUser = this.getUsers().find(u => u.status === 'ACTIVE') || SEED_USERS[1];
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(defaultUser));
-      return defaultUser;
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
     }
-    return JSON.parse(raw);
   }
 
   public setCurrentUser(user: User) {
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+  }
+
+  public logout() {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 
   /**
@@ -188,11 +177,12 @@ class StorageService {
   /**
    * Request OTP with Cloudflare & Resend integration
    */
-  public async requestOtpWithResend(email: string, purpose: OtpPurpose): Promise<{ code: string; emailSent: boolean; message: string }> {
+  public async requestOtpWithResend(email: string, purpose: OtpPurpose): Promise<{ code: string; emailSent: boolean; message: string; errorDetail?: string }> {
     const normalizedEmail = email.trim().toLowerCase();
     const local = this.requestOtp(normalizedEmail, purpose);
     let emailSent = false;
     let message = '';
+    let errorDetail: string | undefined = undefined;
 
     try {
       const res = await fetch('/api/auth/otp/request', {
@@ -203,6 +193,7 @@ class StorageService {
       if (res.ok) {
         const data: any = await res.json();
         emailSent = !!data.emailSent;
+        errorDetail = data.errorDetail;
         if (data.simulatedCode) {
           // Sync with server generated code if in D1
           this.verifyOtpDirect(normalizedEmail, data.simulatedCode, purpose);
@@ -217,6 +208,7 @@ class StorageService {
     return {
       code: local.code,
       emailSent,
+      errorDetail,
       message: message || (emailSent 
         ? `Đã gửi mã OTP đến ${normalizedEmail} qua Resend.` 
         : `Mã OTP xác thực: ${local.code}`)

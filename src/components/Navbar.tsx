@@ -12,12 +12,14 @@ import {
   Flame,
   CheckCircle2,
   Crown,
-  BookOpen
+  BookOpen,
+  LogOut,
+  KeyRound
 } from 'lucide-react';
 import { Exam, MockAttempt, User } from '../types';
 
 interface NavbarProps {
-  currentUser: User;
+  currentUser: User | null;
   activeExam: Exam | null;
   exams: Exam[];
   onSelectExam: (exam: Exam) => void;
@@ -26,6 +28,7 @@ interface NavbarProps {
   onOpenAuth: () => void;
   onOpenAccountSettings: () => void;
   onSwitchUser: (user: User) => void;
+  onLogout?: () => void;
   allUsers: User[];
   activeMockAttempt: MockAttempt | null;
   onResumeMock: () => void;
@@ -41,6 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenAccountSettings,
   onSwitchUser,
+  onLogout,
   allUsers,
   activeMockAttempt,
   onResumeMock
@@ -229,7 +233,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             {/* Tab: Admin (Only visible for Admin) */}
-            {currentUser.role === 'ADMIN' && (
+            {currentUser && currentUser.role === 'ADMIN' && (
               <button
                 onClick={() => onChangeTab('admin')}
                 className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition cursor-pointer ${
@@ -244,32 +248,41 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </nav>
 
-          {/* RIGHT: User Profile Capsule */}
+          {/* RIGHT: User Profile Capsule or Guest Login */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="relative user-dropdown-container">
+            {!currentUser ? (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowUserDropdown(!showUserDropdown);
-                  setShowExamDropdown(false);
-                }}
-                className={`flex items-center gap-3 p-1.5 pl-3 rounded-2xl border-2 transition shadow-md ${
-                  currentUser.role === 'ADMIN'
-                    ? 'bg-purple-950/40 hover:bg-purple-900/50 border-purple-500/60 text-white'
-                    : 'bg-slate-850 hover:bg-slate-800 border-slate-600 text-white'
-                }`}
+                onClick={onOpenAuth}
+                className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-blue-600/30 flex items-center gap-2 border border-blue-400/40 transition hover:scale-102 cursor-pointer"
               >
-                <div className="flex flex-col text-right hidden md:block">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs sm:text-sm font-extrabold text-white leading-tight">
-                      {currentUser.name}
+                <KeyRound className="w-4 h-4 text-blue-200" />
+                <span>Đăng nhập (OTP Email)</span>
+              </button>
+            ) : (
+              <div className="relative user-dropdown-container">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowUserDropdown(!showUserDropdown);
+                    setShowExamDropdown(false);
+                  }}
+                  className={`flex items-center gap-3 p-1.5 pl-3 rounded-2xl border-2 transition shadow-md cursor-pointer ${
+                    currentUser.role === 'ADMIN'
+                      ? 'bg-purple-950/40 hover:bg-purple-900/50 border-purple-500/60 text-white'
+                      : 'bg-slate-850 hover:bg-slate-800 border-slate-600 text-white'
+                  }`}
+                >
+                  <div className="flex flex-col text-right hidden md:block">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-xs sm:text-sm font-extrabold text-white leading-tight">
+                        {currentUser.name}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-300 max-w-[180px] truncate block">
+                      {currentUser.email}
                     </span>
                   </div>
-                  <span className="text-[11px] font-mono text-slate-300 max-w-[180px] truncate block">
-                    {currentUser.email}
-                  </span>
-                </div>
 
                 {/* Avatar with Role Crown / Shield */}
                 <div className="relative">
@@ -360,79 +373,94 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-emerald-400 hover:bg-emerald-950/30 flex items-center gap-2.5 transition"
                     >
                       <UserIcon className="w-4 h-4 text-emerald-400" />
-                      <span>Đăng nhập OTP / Tạo tài khoản mới</span>
+                      <span>Đổi tài khoản / Đăng nhập OTP khác</span>
                     </button>
+                    <div className="pt-1 border-t border-slate-800">
+                      <button
+                        onClick={() => {
+                          onLogout?.();
+                          setShowUserDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-red-400 hover:bg-red-500/15 flex items-center gap-2.5 transition cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4 text-red-400" />
+                        <span>Đăng xuất (Rời khỏi hệ thống)</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
+            )}
           </div>
 
         </div>
       </div>
 
       {/* Mobile High-Visibility Navigation Bar */}
-      <div className="lg:hidden grid grid-cols-5 border-t-2 border-slate-700 bg-slate-900 px-2 py-2.5">
-        <button
-          onClick={() => onChangeTab('dashboard')}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
-            activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          <Layers className="w-5 h-5" />
-          <span>Tổng quan</span>
-        </button>
-
-        <button
-          onClick={() => onChangeTab('questions')}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
-            activeTab === 'questions' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          <BrainCircuit className="w-5 h-5" />
-          <span>Học liệu</span>
-        </button>
-
-        <button
-          onClick={() => onChangeTab('study')}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
-            activeTab === 'study' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          <Flame className="w-5 h-5" />
-          <span>Ôn tập</span>
-        </button>
-
-        <button
-          onClick={() => onChangeTab('mock')}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
-            activeTab === 'mock' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          <GraduationCap className="w-5 h-5" />
-          <span>Thi thử</span>
-        </button>
-
-        {currentUser.role === 'ADMIN' ? (
+      {currentUser && (
+        <div className="lg:hidden grid grid-cols-5 border-t-2 border-slate-700 bg-slate-900 px-2 py-2.5">
           <button
-            onClick={() => onChangeTab('admin')}
+            onClick={() => onChangeTab('dashboard')}
             className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
-              activeTab === 'admin' ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:text-white'
+              activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
             }`}
           >
-            <ShieldCheck className="w-5 h-5" />
-            <span>Admin</span>
+            <Layers className="w-5 h-5" />
+            <span>Tổng quan</span>
           </button>
-        ) : (
+
           <button
-            onClick={() => onOpenAccountSettings()}
-            className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold text-slate-300 hover:text-white"
+            onClick={() => onChangeTab('questions')}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
+              activeTab === 'questions' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
+            }`}
           >
-            <Settings className="w-5 h-5" />
-            <span>Cài đặt</span>
+            <BrainCircuit className="w-5 h-5" />
+            <span>Học liệu</span>
           </button>
-        )}
-      </div>
+
+          <button
+            onClick={() => onChangeTab('study')}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
+              activeTab === 'study' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Flame className="w-5 h-5" />
+            <span>Ôn tập</span>
+          </button>
+
+          <button
+            onClick={() => onChangeTab('mock')}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
+              activeTab === 'mock' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <GraduationCap className="w-5 h-5" />
+            <span>Thi thử</span>
+          </button>
+
+          {currentUser.role === 'ADMIN' ? (
+            <button
+              onClick={() => onChangeTab('admin')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold transition ${
+                activeTab === 'admin' ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-5 h-5" />
+              <span>Admin</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => onOpenAccountSettings()}
+              className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-extrabold text-slate-300 hover:text-white"
+            >
+              <Settings className="w-5 h-5" />
+              <span>Cài đặt</span>
+            </button>
+          )}
+        </div>
+      )}
     </header>
   );
 };
