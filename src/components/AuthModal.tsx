@@ -21,7 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   if (!isOpen) return null;
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setInfo(null);
@@ -33,10 +33,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
-      const res = storage.registerUser(name, email);
-      setSimulatedCode(res.otpCode);
+      const reg = storage.registerUser(name, email);
+      const res = await storage.requestOtpWithResend(email, 'VERIFY_EMAIL');
+      setSimulatedCode(res.code);
       setMode('VERIFY_REGISTER_OTP');
-      setInfo(`Hệ thống đã gửi mã OTP xác minh email đến ${email}. (Mã mô phỏng: ${res.otpCode})`);
+      if (res.emailSent) {
+        setInfo(`✓ Mã xác minh đã được gửi đến ${email} qua Resend! Vui lòng kiểm tra Inbox hoặc Spam.`);
+      } else {
+        setInfo(res.message || `Mã xác minh của bạn: ${res.code}`);
+      }
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra khi đăng ký.');
     } finally {
@@ -64,7 +69,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     }
   };
 
-  const handleLoginRequestOtp = (e: React.FormEvent) => {
+  const handleLoginRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setInfo(null);
@@ -100,10 +105,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
-      const { code } = storage.requestOtp(normEmail, 'LOGIN');
-      setSimulatedCode(code);
+      const res = await storage.requestOtpWithResend(normEmail, 'LOGIN');
+      setSimulatedCode(res.code);
       setMode('VERIFY_LOGIN_OTP');
-      setInfo(`Mã OTP đăng nhập đã được gửi đến ${email}. (Mã mô phỏng: ${code})`);
+      if (res.emailSent) {
+        setInfo(`✓ Mã OTP đã được gửi thành công đến hòm thư ${email} qua Resend! Vui lòng kiểm tra Inbox hoặc Spam.`);
+      } else {
+        setInfo(res.message || `Mã OTP đăng nhập của bạn: ${res.code}`);
+      }
     } catch (err: any) {
       setError(err.message || 'Lỗi khi gửi mã đăng nhập.');
     } finally {

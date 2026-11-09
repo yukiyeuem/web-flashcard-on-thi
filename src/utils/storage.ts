@@ -186,6 +186,59 @@ class StorageService {
   }
 
   /**
+   * Request OTP with Cloudflare & Resend integration
+   */
+  public async requestOtpWithResend(email: string, purpose: OtpPurpose): Promise<{ code: string; emailSent: boolean; message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const local = this.requestOtp(normalizedEmail, purpose);
+    let emailSent = false;
+    let message = '';
+
+    try {
+      const res = await fetch('/api/auth/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, purpose })
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        emailSent = !!data.emailSent;
+        if (data.simulatedCode) {
+          // Sync with server generated code if in D1
+          this.verifyOtpDirect(normalizedEmail, data.simulatedCode, purpose);
+          local.code = data.simulatedCode;
+        }
+        message = data.message || '';
+      }
+    } catch (e) {
+      // Running standalone / preview
+    }
+
+    return {
+      code: local.code,
+      emailSent,
+      message: message || (emailSent 
+        ? `Đã gửi mã OTP đến ${normalizedEmail} qua Resend.` 
+        : `Mã OTP xác thực: ${local.code}`)
+    };
+  }
+
+  private verifyOtpDirect(email: string, code: string, purpose: OtpPurpose) {
+    const otpsRaw = localStorage.getItem(STORAGE_KEYS.OTP_CODES);
+    const otps: OtpCode[] = otpsRaw ? JSON.parse(otpsRaw) : [];
+    otps.push({
+      id: 'otp-' + Date.now(),
+      email,
+      code,
+      purpose,
+      expires_at: Date.now() + 10 * 60 * 1000,
+      consumed_at: null,
+      attempts: 0
+    });
+    localStorage.setItem(STORAGE_KEYS.OTP_CODES, JSON.stringify(otps));
+  }
+
+  /**
    * Verify OTP with Purpose Check (BR-21)
    */
   public verifyOtp(email: string, code: string, expectedPurpose: OtpPurpose): boolean {
