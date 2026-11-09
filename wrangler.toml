@@ -5,6 +5,7 @@ compatibility_date = "2024-04-01"
 # Cấu hình thư mục chứa mã nguồn tĩnh sau khi build cho Cloudflare
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 
 # Binding Cloudflare D1 Database cho tài khoản quản trị
 [[d1_databases]]

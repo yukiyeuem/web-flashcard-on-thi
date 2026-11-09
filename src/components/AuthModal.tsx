@@ -37,7 +37,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     try {
       setLoading(true);
       const reg = storage.registerUser(name, email);
-      const res = await storage.requestOtpWithResend(email, 'VERIFY_EMAIL');
+      const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
+      if (keyToSend) {
+        localStorage.setItem('certflash_resend_api_key', keyToSend);
+      }
+      const res = await storage.requestOtpWithResend(email, 'VERIFY_EMAIL', keyToSend);
       setSimulatedCode(res.code);
       setMode('VERIFY_REGISTER_OTP');
       if (res.emailSent) {
@@ -108,7 +112,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
-      const res = await storage.requestOtpWithResend(normEmail, 'LOGIN');
+      const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
+      if (keyToSend) {
+        localStorage.setItem('certflash_resend_api_key', keyToSend);
+      }
+      const res = await storage.requestOtpWithResend(normEmail, 'LOGIN', keyToSend);
       if (res.emailSent) {
         setIsEmailSent(true);
         setSimulatedCode(null);
@@ -273,6 +281,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               </div>
             </div>
 
+            {/* Direct Resend Key input for instant mail delivery */}
+            <div className="p-3 bg-slate-800/80 border border-slate-700/80 rounded-xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Resend API Key:</span>
+                </label>
+                {inputResendKey.trim() && (
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    ✓ Đã lưu key
+                  </span>
+                )}
+              </div>
+              <input
+                type="password"
+                placeholder="re_123456789... (nếu Cloudflare bị khóa biến)"
+                value={inputResendKey}
+                onChange={e => {
+                  const val = e.target.value.trim();
+                  setInputResendKey(val);
+                  if (val) localStorage.setItem('certflash_resend_api_key', val);
+                  else localStorage.removeItem('certflash_resend_api_key');
+                }}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+              />
+              <p className="text-[10px] text-slate-400 leading-normal">
+                💡 Dán mã key từ <span className="text-amber-300 font-mono">resend.com</span> tại đây để nhận OTP trực tiếp vào Gmail mà không cần cấu hình Cloudflare.
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -424,7 +462,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                       type="password"
                       placeholder="re_123456789..."
                       value={inputResendKey}
-                      onChange={e => setInputResendKey(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value.trim();
+                        setInputResendKey(val);
+                        if (val) localStorage.setItem('certflash_resend_api_key', val);
+                        else localStorage.removeItem('certflash_resend_api_key');
+                      }}
                       className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-amber-400"
                     />
                     <button
