@@ -29,13 +29,20 @@ export default {
           });
         }
 
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const code = (body.code || '').trim() || Math.floor(100000 + Math.random() * 900000).toString();
         const now = Date.now();
         const expiresAt = now + 10 * 60 * 1000; // 10 phút
 
         // Lưu vào Cloudflare D1 nếu có binding DB
         if (env.DB) {
           try {
+            // Hủy các mã OTP cũ chưa dùng của email này để tránh xung đột
+            await env.DB.prepare(
+              `UPDATE otp_codes SET consumed_at = ? WHERE email = ? AND purpose = ? AND consumed_at IS NULL`
+            )
+            .bind(now, email, purpose)
+            .run();
+
             await env.DB.prepare(
               `INSERT INTO otp_codes (id, email, code, purpose, expires_at, consumed_at, attempts)
                VALUES (?, ?, ?, ?, ?, NULL, 0)`
@@ -111,11 +118,10 @@ export default {
             success: true,
             email,
             emailSent,
-            simulatedCode: !emailSent ? code : undefined,
             errorDetail: !emailSent && resendError ? (typeof resendError === 'object' ? JSON.stringify(resendError) : resendError) : null,
             message: emailSent
               ? `Mã OTP đã được gửi thành công đến ${email} qua Resend.`
-              : `Mã OTP xác thực: ${code}`
+              : `Chưa gửi được mail qua Resend. Vui lòng kiểm tra lại Resend API Key.`
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         );

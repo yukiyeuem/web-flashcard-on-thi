@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Mail, Shield, CheckCircle2, AlertCircle, ArrowRight, KeyRound, RefreshCw, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Mail, CheckCircle2, AlertCircle, ArrowRight, KeyRound, RefreshCw, ArrowLeft } from 'lucide-react';
 import { storage } from '../utils/storage';
 import { User } from '../types';
 
@@ -14,13 +14,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [otpCode, setOtpCode] = useState('');
-  const [simulatedCode, setSimulatedCode] = useState<string | null>(null);
   const [isEmailSent, setIsEmailSent] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [inputResendKey, setInputResendKey] = useState(() => localStorage.getItem('certflash_resend_api_key') || '');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Reset modal state every time it opens to prevent expired state ghosting after logout
+  useEffect(() => {
+    if (isOpen) {
+      setMode('LOGIN');
+      setOtpCode('');
+      setError(null);
+      setInfo(null);
+      setIsEmailSent(false);
+      setErrorDetail(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -36,18 +47,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
-      const reg = storage.registerUser(name, email);
+      storage.registerUser(name, email);
       const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
       if (keyToSend) {
         localStorage.setItem('certflash_resend_api_key', keyToSend);
       }
       const res = await storage.requestOtpWithResend(email, 'VERIFY_EMAIL', keyToSend);
-      setSimulatedCode(res.code);
       setMode('VERIFY_REGISTER_OTP');
+      setOtpCode('');
       if (res.emailSent) {
-        setInfo(`✓ Mã xác minh đã được gửi đến ${email} qua Resend! Vui lòng kiểm tra Inbox hoặc Spam.`);
+        setIsEmailSent(true);
+        setInfo(`✓ Mã xác minh 6 số đã được gửi đến ${email} qua Resend! Vui lòng kiểm tra Inbox hoặc Spam.`);
       } else {
-        setInfo(res.message || `Mã xác minh của bạn: ${res.code}`);
+        setIsEmailSent(false);
+        setErrorDetail(res.errorDetail || res.message);
+        setError('Chưa gửi được mail qua Resend. Vui lòng kiểm tra lại Resend API Key bên dưới.');
       }
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra khi đăng ký.');
@@ -63,9 +77,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
-      const user = storage.completeEmailVerification(email, otpCode);
-      setInfo('Xác minh Gmail thành công! Tài khoản của bạn hiện ở trạng thái CHỜ DUYỆT (PENDING). Quản trị viên sẽ phê duyệt trước khi bạn có thể đăng nhập.');
-      // Keep on screen for 3 seconds or allow close
+      storage.completeEmailVerification(email, otpCode);
+      setInfo('✓ Xác minh Gmail thành công! Tài khoản của bạn hiện ở trạng thái CHỜ DUYỆT (PENDING). Quản trị viên sẽ phê duyệt trước khi bạn có thể đăng nhập.');
       setTimeout(() => {
         onClose();
       }, 3500);
@@ -117,20 +130,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         localStorage.setItem('certflash_resend_api_key', keyToSend);
       }
       const res = await storage.requestOtpWithResend(normEmail, 'LOGIN', keyToSend);
+      setOtpCode('');
       if (res.emailSent) {
         setIsEmailSent(true);
-        setSimulatedCode(null);
         setErrorDetail(null);
-        setInfo(`✓ Mã OTP 6 số đã được gửi thành công đến hòm thư ${email} qua Resend!`);
+        setInfo(`✓ Mã OTP 6 số đã được chuyển trực tiếp vào hộp thư Gmail: ${email}. Vui lòng mở Gmail để kiểm tra.`);
       } else {
         setIsEmailSent(false);
-        setSimulatedCode(res.code);
-        setErrorDetail(res.errorDetail || null);
-        setInfo(null);
+        setErrorDetail(res.errorDetail || res.message);
+        setError('Chưa gửi được mail qua Resend. Vui lòng kiểm tra lại Resend API Key bên dưới.');
       }
       setMode('VERIFY_LOGIN_OTP');
     } catch (err: any) {
       setError(err.message || 'Lỗi khi gửi mã đăng nhập.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendNewOtp = async () => {
+    setError(null);
+    setInfo(null);
+    setOtpCode('');
+    setLoading(true);
+    const normEmail = email.trim().toLowerCase();
+    const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
+
+    try {
+      const purpose = mode === 'VERIFY_REGISTER_OTP' ? 'VERIFY_EMAIL' : 'LOGIN';
+      const res = await storage.requestOtpWithResend(normEmail, purpose, keyToSend);
+      if (res.emailSent) {
+        setIsEmailSent(true);
+        setErrorDetail(null);
+        setInfo(`✓ Đã cấp mã OTP mới và gửi thành công đến ${email}! Vui lòng kiểm tra Gmail (Inbox & Spam).`);
+      } else {
+        setIsEmailSent(false);
+        setErrorDetail(res.errorDetail || res.message);
+        setError('Chưa gửi được mã OTP qua Resend. Vui lòng kiểm tra lại Resend API Key bên dưới.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Lỗi khi gửi lại mã OTP.');
     } finally {
       setLoading(false);
     }
@@ -143,23 +182,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       return;
     }
     localStorage.setItem('certflash_resend_api_key', key);
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await storage.requestOtpWithResend(email.trim().toLowerCase(), 'LOGIN', key);
-      if (res.emailSent) {
-        setIsEmailSent(true);
-        setSimulatedCode(null);
-        setErrorDetail(null);
-        setInfo(`✓ Mã OTP đã được gửi đến ${email} qua Resend thành công! Vui lòng kiểm tra Gmail.`);
-      } else {
-        setErrorDetail(res.errorDetail || res.message);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Lỗi gửi mail qua Resend');
-    } finally {
-      setLoading(false);
-    }
+    await handleResendNewOtp();
   };
 
   const handleVerifyLoginOtp = (e: React.FormEvent) => {
@@ -169,7 +192,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
+      // Strictly verify code received via email
       storage.verifyOtp(email, otpCode, 'LOGIN');
+
+      // Sync consume on backend if Worker/D1 is active
+      fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: otpCode.trim(), purpose: 'LOGIN' })
+      }).catch(() => {});
+
       const users = storage.getUsers();
       const user = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase())!;
       user.last_login_at = Date.now();
@@ -208,7 +240,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Đăng nhập OTP (ADD-01)
+              Đăng nhập OTP (Bảo mật)
             </button>
             <button
               onClick={() => {
@@ -235,27 +267,39 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <h2 className="text-xl font-bold text-white">
             {mode === 'LOGIN' && 'Đăng nhập với Gmail OTP'}
             {mode === 'REGISTER' && 'Tạo tài khoản học viên mới'}
-            {mode === 'VERIFY_REGISTER_OTP' && 'Xác minh quyền sở hữu Gmail (BR-20)'}
-            {mode === 'VERIFY_LOGIN_OTP' && 'Nhập mã OTP đăng nhập'}
+            {mode === 'VERIFY_REGISTER_OTP' && 'Xác minh quyền sở hữu Gmail'}
+            {mode === 'VERIFY_LOGIN_OTP' && 'Nhập mã OTP từ Gmail'}
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {mode === 'LOGIN' && 'Hệ thống gửi mã OTP bảo mật trực tiếp đến email, không dùng mật khẩu tĩnh.'}
+            {mode === 'LOGIN' && 'Hệ thống gửi mã OTP bảo mật trực tiếp đến hòm thư Gmail của bạn, không dùng mật khẩu tĩnh.'}
             {mode === 'REGISTER' && 'Quy trình chuẩn BA v1.1: Xác minh Gmail trước khi gửi hồ sơ lên Admin duyệt.'}
-            {mode === 'VERIFY_REGISTER_OTP' && 'Vui lòng nhập mã 6 số đã gửi đến hòm thư để chứng minh bạn sở hữu email.'}
-            {mode === 'VERIFY_LOGIN_OTP' && 'Mã OTP chỉ có hiệu lực trong 10 phút và dùng 1 lần duy nhất.'}
+            {mode === 'VERIFY_REGISTER_OTP' && 'Mã xác thực đã được gửi đến email. Vui lòng mở Gmail để lấy mã.'}
+            {mode === 'VERIFY_LOGIN_OTP' && 'Mã OTP bảo mật 6 số có hiệu lực trong 10 phút. Bắt buộc nhận từ email để đăng nhập.'}
           </p>
         </div>
 
         {/* Alert Notifications */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-300 flex items-start gap-2.5">
+          <div className="mb-4 p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-300 flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <div>{error}</div>
+            <div className="flex-1">
+              <div>{error}</div>
+              {error.includes('nhập sai') && (
+                <button
+                  type="button"
+                  onClick={handleResendNewOtp}
+                  className="mt-2 text-xs font-bold text-amber-300 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Bấm vào đây để gửi mã OTP mới</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {info && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2.5">
+          <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <div>{info}</div>
           </div>
@@ -281,7 +325,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               </div>
             </div>
 
-            {/* Direct Resend Key input for instant mail delivery */}
+            {/* Direct Resend Key input */}
             <div className="p-3 bg-slate-800/80 border border-slate-700/80 rounded-xl space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
@@ -307,16 +351,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
               />
               <p className="text-[10px] text-slate-400 leading-normal">
-                💡 Dán mã key từ <span className="text-amber-300 font-mono">resend.com</span> tại đây để nhận OTP trực tiếp vào Gmail mà không cần cấu hình Cloudflare.
+                💡 Nhập mã key từ <span className="text-amber-300 font-mono">resend.com</span> để gửi mã xác thực trực tiếp vào Gmail của bạn.
               </p>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25"
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer disabled:opacity-50"
             >
-              <span>Nhận mã OTP đăng nhập</span>
+              <span>Nhận mã OTP đăng nhập qua Gmail</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -359,7 +403,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25"
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer disabled:opacity-50"
             >
               <span>Gửi mã xác minh Email</span>
               <ArrowRight className="w-4 h-4" />
@@ -367,31 +411,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           </form>
         )}
 
-        {/* Form: VERIFY REGISTER OTP (ADD-01) */}
+        {/* Form: VERIFY REGISTER OTP */}
         {mode === 'VERIFY_REGISTER_OTP' && (
           <form onSubmit={handleVerifyRegisterOtp} className="space-y-4">
-            {/* Notice why OTP is on screen */}
-            <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 text-xs text-amber-200 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-amber-300">
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <span>Mã OTP xác thực tài khoản:</span>
+            <div className="p-3.5 rounded-2xl bg-slate-800/90 border border-slate-700 text-xs text-slate-300 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-blue-400">
+                <Mail className="w-4 h-4 shrink-0" />
+                <span>Kiểm tra Gmail của bạn:</span>
               </div>
-              <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-amber-500/30">
-                <span className="font-mono text-xl font-black text-amber-400 tracking-widest">
-                  {simulatedCode || '123456'}
-                </span>
-                {simulatedCode && (
-                  <button
-                    type="button"
-                    onClick={() => setOtpCode(simulatedCode)}
-                    className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[11px] transition"
-                  >
-                    Tự điền mã này
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                ℹ️ <strong>Lý do chưa nhận mail thật:</strong> Ứng dụng chạy trên môi trường web preview độc lập, chưa liên kết máy chủ gửi thư SMTP ngoài (như SendGrid hay Gmail SMTP App Password). Vì vậy hệ thống cấp mã OTP trực tiếp tại đây để bạn xác thực ngay.
+              <p className="text-xs text-slate-200">
+                Mã xác thực 6 số đã được gửi đến: <strong className="text-white font-mono">{email}</strong>.
+              </p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Vui lòng mở ứng dụng Gmail (kiểm tra cả Hộp thư đến và mục Spam) để lấy mã và nhập vào ô bên dưới.
               </p>
             </div>
 
@@ -413,26 +445,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <button
               type="submit"
               disabled={loading || otpCode.length !== 6}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
             >
               <span>Xác nhận Gmail & Gửi hồ sơ lên Admin duyệt</span>
               <CheckCircle2 className="w-4 h-4" />
             </button>
+
+            <div className="flex items-center justify-between pt-2 text-xs">
+              <button
+                type="button"
+                onClick={handleResendNewOtp}
+                disabled={loading}
+                className="text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Gửi lại mã OTP mới</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('REGISTER')}
+                className="text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Sửa email</span>
+              </button>
+            </div>
           </form>
         )}
 
-        {/* Form: VERIFY LOGIN OTP (BR-21) */}
+        {/* Form: VERIFY LOGIN OTP (Strict Email Delivery - Zero Bypass) */}
         {mode === 'VERIFY_LOGIN_OTP' && (
           <form onSubmit={handleVerifyLoginOtp} className="space-y-4">
-            {/* Resend Success vs Fallback display */}
+            {/* Delivery Status */}
             {isEmailSent ? (
               <div className="p-4 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/40 text-xs text-emerald-200 space-y-2">
                 <div className="flex items-center gap-2 font-bold text-emerald-300 text-sm">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <span>Đã gửi mã OTP qua Resend thành công!</span>
+                  <span>Đã gửi mã OTP đến Gmail thành công!</span>
                 </div>
                 <p className="text-slate-300 text-xs leading-relaxed">
-                  Mã OTP bảo mật 6 số đã được chuyển trực tiếp vào hòm thư Gmail của bạn: <strong className="text-white font-mono">{email}</strong>.
+                  Mã OTP bảo mật 6 số đã được gửi đến: <strong className="text-white font-mono">{email}</strong>.
                 </p>
                 <p className="text-[11px] text-emerald-400/90 font-medium">
                   👉 Vui lòng mở ứng dụng Gmail (kiểm tra cả mục Hộp thư đến và mục Spam/Thư rác) và điền mã vào ô bên dưới.
@@ -449,13 +501,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     Chi tiết: {errorDetail}
                   </p>
                 )}
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  💡 <strong>Cách xử lý:</strong> Trên Cloudflare Pages, sau khi thêm biến môi trường <code className="text-amber-300">RESEND_API_KEY</code>, bạn cần vào tab <strong>Deployments</strong> và bấm <strong>Retry deployment</strong> thì Cloudflare mới nạp biến đó vào server.
-                </p>
                 {/* Direct Resend Key Input */}
                 <div className="pt-2 border-t border-amber-500/30 space-y-1.5">
                   <label className="text-[10px] font-bold text-amber-200 block">
-                    🔑 Hoặc dán trực tiếp Resend API Key của bạn để gửi mail ngay:
+                    🔑 Dán Resend API Key của bạn để gửi mã vào Gmail:
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -480,30 +529,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     </button>
                   </div>
                 </div>
-
-                <div className="pt-1">
-                  <div className="text-[10px] text-slate-400 font-bold mb-1">Mã OTP kiểm thử tạm thời:</div>
-                  <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-amber-500/30">
-                    <span className="font-mono text-xl font-black text-amber-400 tracking-widest">
-                      {simulatedCode || '123456'}
-                    </span>
-                    {simulatedCode && (
-                      <button
-                        type="button"
-                        onClick={() => setOtpCode(simulatedCode)}
-                        className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-[11px] transition"
-                      >
-                        Tự điền mã này
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
             )}
 
             <div>
               <label className="block text-xs font-bold text-slate-200 mb-1.5">
-                Nhập mã OTP đăng nhập 6 chữ số:
+                Nhập mã OTP gồm 6 chữ số từ Gmail:
               </label>
               <input
                 type="text"
@@ -519,11 +550,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <button
               type="submit"
               disabled={loading || otpCode.length !== 6}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 cursor-pointer"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 cursor-pointer"
             >
               <span>Xác thực & Vào ứng dụng ngay</span>
               <CheckCircle2 className="w-4 h-4" />
             </button>
+
+            {/* Recovery actions */}
+            <div className="flex items-center justify-between pt-2 text-xs">
+              <button
+                type="button"
+                onClick={handleResendNewOtp}
+                disabled={loading}
+                className="text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Gửi lại mã OTP mới</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('LOGIN');
+                  setOtpCode('');
+                  setError(null);
+                }}
+                className="text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Đổi email khác</span>
+              </button>
+            </div>
           </form>
         )}
       </div>

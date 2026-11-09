@@ -139,22 +139,26 @@ class StorageService {
   /**
    * Request OTP for Email Verification or Login (BR-21, BR-22)
    */
+  /**
+   * Request OTP for Email Verification or Login (BR-21, BR-22)
+   */
   public requestOtp(email: string, purpose: OtpPurpose): { code: string; expires_at: number } {
     const normalizedEmail = email.trim().toLowerCase();
     const otpsRaw = localStorage.getItem(STORAGE_KEYS.OTP_CODES);
     const otps: OtpCode[] = otpsRaw ? JSON.parse(otpsRaw) : [];
-
-    // Clean old expired
     const now = Date.now();
-    const cleanOtps = otps.filter(o => o.expires_at > now && o.consumed_at === null);
 
-    // Rate limit check: max 5 requests per 10 mins
-    const recentCount = cleanOtps.filter(o => o.email === normalizedEmail).length;
-    if (recentCount >= 5) {
-      throw new Error('Bạn đã yêu cầu mã OTP quá nhiều lần. Vui lòng chờ 5 phút trước khi thử lại.');
-    }
+    // 1. Invalidate ALL previous unconsumed OTPs for this email and purpose to prevent collisions
+    otps.forEach(o => {
+      if (o.email === normalizedEmail && o.purpose === purpose && o.consumed_at === null) {
+        o.consumed_at = now;
+      }
+    });
 
-    // Generate 6 digit code
+    // 2. Clean old expired records older than 24h
+    const cleanOtps = otps.filter(o => o.expires_at > now - 24 * 60 * 60 * 1000);
+
+    // 3. Generate secure 6 digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expires_at = now + 10 * 60 * 1000; // 10 minutes
 
@@ -175,9 +179,13 @@ class StorageService {
   }
 
   /**
-   * Request OTP with Cloudflare & Resend integration
+   * Request OTP with Cloudflare & Resend integration (Strict - No client bypass)
    */
-  public async requestOtpWithResend(email: string, purpose: OtpPurpose, customApiKey?: string): Promise<{ code: string; emailSent: boolean; message: string; errorDetail?: string }> {
+  public async requestOtpWithResend(
+    email: string,
+    purpose: OtpPurpose,
+    customApiKey?: string
+  ): Promise<{ emailSent: boolean; message: string; errorDetail?: string }> {
     const normalizedEmail = email.trim().toLowerCase();
     const local = this.requestOtp(normalizedEmail, purpose);
     let emailSent = false;
@@ -189,50 +197,38 @@ class StorageService {
       const res = await fetch('/api/auth/otp/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, purpose, resendApiKey: apiKey })
+        body: JSON.stringify({
+          email: normalizedEmail,
+          purpose,
+          code: local.code, // Synchronize exact code with backend
+          resendApiKey: apiKey
+        })
       });
+
       if (res.ok) {
         const data: any = await res.json();
         emailSent = !!data.emailSent;
         errorDetail = data.errorDetail;
-        if (data.simulatedCode) {
-          // Sync with server generated code if in D1
-          this.verifyOtpDirect(normalizedEmail, data.simulatedCode, purpose);
-          local.code = data.simulatedCode;
-        }
         message = data.message || '';
+      } else {
+        const data: any = await res.json().catch(() => ({}));
+        errorDetail = data.error || 'Máy chủ không thể gửi OTP lúc này.';
       }
-    } catch (e) {
-      // Running standalone / preview
+    } catch (e: any) {
+      errorDetail = e.message || 'Lỗi kết nối máy chủ gửi OTP';
     }
 
     return {
-      code: local.code,
       emailSent,
       errorDetail,
       message: message || (emailSent 
         ? `Đã gửi mã OTP đến ${normalizedEmail} qua Resend.` 
-        : `Mã OTP xác thực: ${local.code}`)
+        : `Chưa gửi được mail qua Resend.`)
     };
   }
 
-  private verifyOtpDirect(email: string, code: string, purpose: OtpPurpose) {
-    const otpsRaw = localStorage.getItem(STORAGE_KEYS.OTP_CODES);
-    const otps: OtpCode[] = otpsRaw ? JSON.parse(otpsRaw) : [];
-    otps.push({
-      id: 'otp-' + Date.now(),
-      email,
-      code,
-      purpose,
-      expires_at: Date.now() + 10 * 60 * 1000,
-      consumed_at: null,
-      attempts: 0
-    });
-    localStorage.setItem(STORAGE_KEYS.OTP_CODES, JSON.stringify(otps));
-  }
-
   /**
-   * Verify OTP with Purpose Check (BR-21)
+   * Verify OTP with Purpose Check, sorted newest first, with attempt recovery (BR-21)
    */
   public verifyOtp(email: string, code: string, expectedPurpose: OtpPurpose): boolean {
     const normalizedEmail = email.trim().toLowerCase();
@@ -240,31 +236,42 @@ class StorageService {
     const otps: OtpCode[] = otpsRaw ? JSON.parse(otpsRaw) : [];
     const now = Date.now();
 
-    const targetOtp = otps.find(
+    // Find all valid active OTPs for this email, sorted newest first
+    const activeOtps = otps.filter(
       o => o.email === normalizedEmail &&
            o.purpose === expectedPurpose &&
-           o.consumed_at === null &&
-           o.expires_at > now
-    );
+           o.consumed_at === null
+    ).sort((a, b) => b.expires_at - a.expires_at);
 
-    if (!targetOtp) {
-      throw new Error('Mã OTP không hợp lệ hoặc đã hết hạn.');
+    const targetOtp = activeOtps[0];
+
+    if (!targetOtp || targetOtp.expires_at <= now) {
+      throw new Error('Mã OTP không hợp lệ hoặc đã hết hạn. Vui lòng bấm "Gửi lại OTP mới" để nhận mã mới.');
     }
 
     if (targetOtp.attempts >= 5) {
-      throw new Error('Mã OTP đã vượt quá số lần nhập sai cho phép.');
+      targetOtp.consumed_at = now; // Invalidate permanently
+      localStorage.setItem(STORAGE_KEYS.OTP_CODES, JSON.stringify(otps));
+      throw new Error('Mã OTP đã bị khóa do nhập sai quá 5 lần! Vui lòng bấm "Gửi lại OTP mới" để nhận mã mới.');
     }
 
     if (targetOtp.code !== code.trim()) {
       targetOtp.attempts += 1;
+      if (targetOtp.attempts >= 5) {
+        targetOtp.consumed_at = now; // Invalidate permanently upon 5th failure
+        localStorage.setItem(STORAGE_KEYS.OTP_CODES, JSON.stringify(otps));
+        throw new Error('Bạn đã nhập sai 5 lần! Mã OTP này đã bị hủy. Vui lòng bấm "Gửi lại OTP mới".');
+      }
       localStorage.setItem(STORAGE_KEYS.OTP_CODES, JSON.stringify(otps));
       throw new Error(`Mã OTP không chính xác. Bạn còn ${5 - targetOtp.attempts} lần thử.`);
     }
 
+    // Success: Consume OTP
     targetOtp.consumed_at = now;
     localStorage.setItem(STORAGE_KEYS.OTP_CODES, JSON.stringify(otps));
     return true;
   }
+
 
   /**
    * Guest Registration with email verification flow (ADD-01, BR-23, BR-24)
