@@ -47,7 +47,7 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
     // 2. Gửi email qua Resend API nếu có RESEND_API_KEY
     let emailSent = false;
     let resendError: any = null;
-    const apiKey = (env.RESEND_API_KEY || '').trim();
+    const apiKey = (body.resendApiKey || env.RESEND_API_KEY || '').trim();
 
     if (apiKey) {
       try {

@@ -177,18 +177,19 @@ class StorageService {
   /**
    * Request OTP with Cloudflare & Resend integration
    */
-  public async requestOtpWithResend(email: string, purpose: OtpPurpose): Promise<{ code: string; emailSent: boolean; message: string; errorDetail?: string }> {
+  public async requestOtpWithResend(email: string, purpose: OtpPurpose, customApiKey?: string): Promise<{ code: string; emailSent: boolean; message: string; errorDetail?: string }> {
     const normalizedEmail = email.trim().toLowerCase();
     const local = this.requestOtp(normalizedEmail, purpose);
     let emailSent = false;
     let message = '';
     let errorDetail: string | undefined = undefined;
+    const apiKey = (customApiKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
 
     try {
       const res = await fetch('/api/auth/otp/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, purpose })
+        body: JSON.stringify({ email: normalizedEmail, purpose, resendApiKey: apiKey })
       });
       if (res.ok) {
         const data: any = await res.json();

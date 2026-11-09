@@ -17,6 +17,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [simulatedCode, setSimulatedCode] = useState<string | null>(null);
   const [isEmailSent, setIsEmailSent] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [inputResendKey, setInputResendKey] = useState(() => localStorage.getItem('certflash_resend_api_key') || '');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -122,6 +123,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       setMode('VERIFY_LOGIN_OTP');
     } catch (err: any) {
       setError(err.message || 'Lỗi khi gửi mã đăng nhập.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveAndRetryResend = async () => {
+    const key = inputResendKey.trim();
+    if (!key) {
+      setError('Vui lòng nhập API Key Resend (dạng re_...).');
+      return;
+    }
+    localStorage.setItem('certflash_resend_api_key', key);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await storage.requestOtpWithResend(email.trim().toLowerCase(), 'LOGIN', key);
+      if (res.emailSent) {
+        setIsEmailSent(true);
+        setSimulatedCode(null);
+        setErrorDetail(null);
+        setInfo(`✓ Mã OTP đã được gửi đến ${email} qua Resend thành công! Vui lòng kiểm tra Gmail.`);
+      } else {
+        setErrorDetail(res.errorDetail || res.message);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Lỗi gửi mail qua Resend');
     } finally {
       setLoading(false);
     }
@@ -387,6 +414,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 <p className="text-[11px] text-slate-300 leading-relaxed">
                   💡 <strong>Cách xử lý:</strong> Trên Cloudflare Pages, sau khi thêm biến môi trường <code className="text-amber-300">RESEND_API_KEY</code>, bạn cần vào tab <strong>Deployments</strong> và bấm <strong>Retry deployment</strong> thì Cloudflare mới nạp biến đó vào server.
                 </p>
+                {/* Direct Resend Key Input */}
+                <div className="pt-2 border-t border-amber-500/30 space-y-1.5">
+                  <label className="text-[10px] font-bold text-amber-200 block">
+                    🔑 Hoặc dán trực tiếp Resend API Key của bạn để gửi mail ngay:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="re_123456789..."
+                      value={inputResendKey}
+                      onChange={e => setInputResendKey(e.target.value)}
+                      className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveAndRetryResend}
+                      disabled={!inputResendKey.trim() || loading}
+                      className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-black rounded-lg text-[11px] shrink-0 transition cursor-pointer"
+                    >
+                      Gửi lại OTP
+                    </button>
+                  </div>
+                </div>
+
                 <div className="pt-1">
                   <div className="text-[10px] text-slate-400 font-bold mb-1">Mã OTP kiểm thử tạm thời:</div>
                   <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-amber-500/30">

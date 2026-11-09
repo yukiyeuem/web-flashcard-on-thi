@@ -50,7 +50,7 @@ export default {
         // Gửi qua Resend API
         let emailSent = false;
         let resendError: any = null;
-        const apiKey = (env.RESEND_API_KEY || '').trim();
+        const apiKey = (body.resendApiKey || env.RESEND_API_KEY || '').trim();
 
         if (apiKey) {
           try {
