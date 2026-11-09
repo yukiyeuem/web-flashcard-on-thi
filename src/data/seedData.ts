@@ -10,34 +10,6 @@ export const SEED_USERS: User[] = [
     email_verified_at: 1700000000000,
     created_at: 1700000000000,
     last_login_at: 1700050000000
-  },
-  {
-    id: 'user-learner-1',
-    email: 'user@certflash.io',
-    name: 'Học Viên Demo (AWS & Azure Candidate)',
-    role: 'USER',
-    status: 'ACTIVE',
-    email_verified_at: 1700100000000,
-    created_at: 1700100000000,
-    last_login_at: 1700120000000
-  },
-  {
-    id: 'user-pending-1',
-    email: 'phuong.thao@techmail.vn',
-    name: 'Nguyễn Phương Thảo',
-    role: 'USER',
-    status: 'PENDING',
-    email_verified_at: 1700200000000,
-    created_at: 1700200000000
-  },
-  {
-    id: 'user-unverified-1',
-    email: 'chua.xac.thuc@gmail.com',
-    name: 'Trần Văn Nam',
-    role: 'USER',
-    status: 'PENDING_VERIFICATION',
-    email_verified_at: null,
-    created_at: 1700210000000
   }
 ];
 

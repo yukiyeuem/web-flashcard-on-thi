@@ -309,34 +309,36 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </p>
                   </div>
 
-                  {/* Switch Demo Accounts */}
-                  <div className="py-3 border-b border-slate-800">
-                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                      Chuyển đổi tài khoản (Testing Switcher)
+                  {/* Multiple Real Users (if any registered) */}
+                  {allUsers.length > 1 && (
+                    <div className="py-3 border-b border-slate-800">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                        Tài khoản trên hệ thống ({allUsers.length})
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {allUsers.map(u => (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              onSwitchUser(u);
+                              setShowUserDropdown(false);
+                            }}
+                            className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between transition ${
+                              currentUser.id === u.id
+                                ? 'bg-blue-600 text-white font-bold'
+                                : 'bg-slate-850 hover:bg-slate-800 text-slate-200 border border-slate-800'
+                            }`}
+                          >
+                            <div className="truncate pr-2">
+                              <div className="font-bold">{u.name}</div>
+                              <div className="text-[10px] opacity-80 truncate">{u.email} ({u.role})</div>
+                            </div>
+                            {currentUser.id === u.id && <CheckCircle2 className="w-4 h-4 text-white shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {allUsers.map(u => (
-                        <button
-                          key={u.id}
-                          onClick={() => {
-                            onSwitchUser(u);
-                            setShowUserDropdown(false);
-                          }}
-                          className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between transition ${
-                            currentUser.id === u.id
-                              ? 'bg-blue-600 text-white font-bold'
-                              : 'bg-slate-850 hover:bg-slate-800 text-slate-200 border border-slate-800'
-                          }`}
-                        >
-                          <div className="truncate pr-2">
-                            <div className="font-bold">{u.name}</div>
-                            <div className="text-[10px] opacity-80 truncate">{u.email} ({u.role})</div>
-                          </div>
-                          {currentUser.id === u.id && <CheckCircle2 className="w-4 h-4 text-white shrink-0" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  )}
 
                   {/* Account Actions */}
                   <div className="pt-3 space-y-1.5">

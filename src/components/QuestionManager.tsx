@@ -206,10 +206,10 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
 
             <button
               onClick={onOpenImport}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-2"
+              className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border-2 border-emerald-500/50 text-xs font-bold text-emerald-300 transition flex items-center gap-2"
             >
               <Upload className="w-4 h-4 text-emerald-400" />
-              <span>Import (DOCX/JSON)</span>
+              <span>Tải tệp Word (.docx) / PDF</span>
             </button>
 
             <button

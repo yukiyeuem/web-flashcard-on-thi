@@ -39,33 +39,15 @@ export const MockExamRunner: React.FC<MockExamRunnerProps> = ({
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [customDuration, setCustomDuration] = useState(activeExam.default_time_minutes || 60);
+  const [customQuestionCount, setCustomQuestionCount] = useState<number>(questions.length || 10);
+  const [customPassingScore, setCustomPassingScore] = useState<number>(activeExam.passing_score || 72);
 
-  // Initialize or resume attempt (ADD-10: Max 1 IN_PROGRESS)
+  // Sync customQuestionCount when questions change
   useEffect(() => {
-    const existing = storage.getActiveMockAttempt(currentUser.id);
-    if (existing) {
-      setAttempt(existing);
-      setTimeLeftMs(Math.max(0, existing.deadline_at - Date.now()));
+    if (questions.length > 0 && (!customQuestionCount || customQuestionCount > questions.length)) {
+      setCustomQuestionCount(questions.length);
     }
-  }, [currentUser.id]);
-
-  // Countdown Timer based on server deadline (ADD-12)
-  useEffect(() => {
-    if (!attempt || attempt.status !== 'IN_PROGRESS') return;
-
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, attempt.deadline_at - Date.now());
-      setTimeLeftMs(remaining);
-
-      // Auto-submit when deadline reached (ADD-12)
-      if (remaining <= 0) {
-        clearInterval(interval);
-        handleAutoSubmit();
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [attempt?.deadline_at, attempt?.status]);
+  }, [questions.length]);
 
   // Start new attempt (ADD-10 check)
   const handleStartAttempt = () => {
@@ -75,13 +57,30 @@ export const MockExamRunner: React.FC<MockExamRunnerProps> = ({
         return;
       }
 
-      // Shuffle questions for realistic exam
-      const shuffled = [...questions].sort(() => Math.random() - 0.5);
+      const count = Number(customQuestionCount);
+      if (isNaN(count) || count <= 0) {
+        alert('Số lượng câu hỏi phải là số nguyên dương lớn hơn 0.');
+        return;
+      }
+      if (count > questions.length) {
+        alert(`Số lượng câu hỏi (${count}) không được vượt quá tổng số câu hiện có trong bài thi (${questions.length} câu).`);
+        return;
+      }
+
+      const passing = Number(customPassingScore);
+      if (isNaN(passing) || passing <= 0 || passing > 100) {
+        alert('Điểm yêu cầu đỗ phải từ 1% đến 100%.');
+        return;
+      }
+
+      // Shuffle and pick exactly the requested count
+      const shuffled = [...questions].sort(() => Math.random() - 0.5).slice(0, count);
       const newAttempt = storage.startMockExam(
         currentUser.id,
         activeExam,
         shuffled,
-        customDuration
+        customDuration,
+        passing
       );
 
       setAttempt(newAttempt);
@@ -245,32 +244,85 @@ export const MockExamRunner: React.FC<MockExamRunnerProps> = ({
             <span className="font-bold text-slate-200">{activeExam.title} ({activeExam.code})</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Tổng số câu hỏi:</span>
-            <span className="font-bold text-slate-200">{questions.length} câu</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Điểm đỗ yêu cầu:</span>
-            <span className="font-bold text-emerald-400">{activeExam.passing_score}%</span>
+            <span className="text-slate-400">Tổng số câu sẵn có trong đề:</span>
+            <span className="font-bold text-blue-400">{questions.length} câu</span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-slate-400">Cơ chế bảo mật (BA v1.1):</span>
-            <span className="font-bold text-blue-400">ADD-10 (Độc quyền 1 bài), ADD-11 (Chống ghi đè)</span>
+            <span className="font-bold text-emerald-400">ADD-10 (Độc quyền 1 bài), ADD-11 (Chống ghi đè)</span>
           </div>
         </div>
 
+        {/* Custom Configuration: Question Count & Passing Score */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-200 mb-1.5">
+              Số câu hỏi thi (Tự điền):
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                max={questions.length}
+                value={customQuestionCount}
+                onChange={e => {
+                  const val = parseInt(e.target.value);
+                  setCustomQuestionCount(isNaN(val) ? 1 : Math.min(val, questions.length));
+                }}
+                className="w-full px-4 py-2.5 bg-slate-800 border-2 border-slate-700 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-emerald-500"
+              />
+              <span className="absolute right-3.5 top-2.5 text-xs font-semibold text-slate-400">
+                / {questions.length} câu
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Nhập từ 1 đến tối đa {questions.length} câu. Hệ thống sẽ bốc ngẫu nhiên.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-200 mb-1.5">
+              Điểm đỗ yêu cầu % (Tự điền):
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={customPassingScore}
+                onChange={e => {
+                  const val = parseInt(e.target.value);
+                  setCustomPassingScore(isNaN(val) ? 1 : Math.min(Math.max(val, 1), 100));
+                }}
+                className="w-full px-4 py-2.5 bg-slate-800 border-2 border-slate-700 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-emerald-500"
+              />
+              <span className="absolute right-3.5 top-2.5 text-xs font-semibold text-emerald-400">
+                %
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Điểm tối thiểu để được xét ĐẠT (Passed). Mặc định: {activeExam.passing_score}%.
+            </p>
+          </div>
+        </div>
+
+        {/* Custom Duration */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-2">
-            Thời lượng thi thử (Phút):
-          </label>
-          <div className="grid grid-cols-3 gap-3">
-            {[30, 60, activeExam.default_time_minutes || 130].map(mins => (
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-bold text-slate-200">
+              Thời lượng thi thử (Phút):
+            </label>
+            <span className="text-xs font-mono font-bold text-amber-400">{customDuration} phút</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2.5">
+            {[15, 30, 60, activeExam.default_time_minutes || 130].map(mins => (
               <button
                 key={mins}
                 type="button"
                 onClick={() => setCustomDuration(mins)}
-                className={`py-3 rounded-xl text-xs font-bold border transition ${
+                className={`py-2.5 rounded-xl text-xs font-bold border-2 transition ${
                   customDuration === mins
-                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/20'
+                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-600/30'
                     : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
                 }`}
               >
@@ -282,9 +334,9 @@ export const MockExamRunner: React.FC<MockExamRunnerProps> = ({
 
         <button
           onClick={handleStartAttempt}
-          className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/25"
+          className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/30 cursor-pointer"
         >
-          <span>Bắt đầu tính giờ thi thử</span>
+          <span>Bắt đầu thi thử ({customQuestionCount} câu • Cần {customPassingScore}%)</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

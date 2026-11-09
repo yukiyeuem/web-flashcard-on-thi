@@ -289,22 +289,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* Form: VERIFY REGISTER OTP (ADD-01) */}
         {mode === 'VERIFY_REGISTER_OTP' && (
           <form onSubmit={handleVerifyRegisterOtp} className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-300">
-                  Mã xác minh Email (6 chữ số)
-                </label>
+            {/* Notice why OTP is on screen */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 text-xs text-amber-200 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-amber-300">
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>Mã OTP xác thực tài khoản:</span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-amber-500/30">
+                <span className="font-mono text-xl font-black text-amber-400 tracking-widest">
+                  {simulatedCode || '123456'}
+                </span>
                 {simulatedCode && (
                   <button
                     type="button"
                     onClick={() => setOtpCode(simulatedCode)}
-                    className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
+                    className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[11px] transition"
                   >
-                    <Sparkles className="w-3 h-3" />
-                    Tự điền mã: {simulatedCode}
+                    Tự điền mã này
                   </button>
                 )}
               </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                ℹ️ <strong>Lý do chưa nhận mail thật:</strong> Ứng dụng chạy trên môi trường web preview độc lập, chưa liên kết máy chủ gửi thư SMTP ngoài (như SendGrid hay Gmail SMTP App Password). Vì vậy hệ thống cấp mã OTP trực tiếp tại đây để bạn xác thực ngay.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-200 mb-1.5">
+                Nhập mã xác minh 6 chữ số:
+              </label>
               <input
                 type="text"
                 required
@@ -312,16 +325,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 placeholder="123456"
                 value={otpCode}
                 onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-lg font-mono tracking-widest text-center text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                className="w-full px-4 py-3 bg-slate-800 border-2 border-slate-700 rounded-xl text-xl font-mono tracking-widest text-center text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading || otpCode.length !== 6}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25"
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
             >
-              <span>Xác nhận Gmail & Gửi chờ Admin duyệt</span>
+              <span>Xác nhận Gmail & Gửi hồ sơ lên Admin duyệt</span>
               <CheckCircle2 className="w-4 h-4" />
             </button>
           </form>
@@ -330,22 +343,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* Form: VERIFY LOGIN OTP (BR-21) */}
         {mode === 'VERIFY_LOGIN_OTP' && (
           <form onSubmit={handleVerifyLoginOtp} className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-300">
-                  Mã OTP đăng nhập (6 chữ số)
-                </label>
+            {/* Notice why OTP is on screen */}
+            <div className="p-3.5 rounded-2xl bg-blue-500/15 border-2 border-blue-500/40 text-xs text-blue-200 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-blue-300">
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>Mã OTP đăng nhập an toàn:</span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-900/90 p-2.5 rounded-xl border border-blue-500/30">
+                <span className="font-mono text-xl font-black text-blue-400 tracking-widest">
+                  {simulatedCode || '123456'}
+                </span>
                 {simulatedCode && (
                   <button
                     type="button"
                     onClick={() => setOtpCode(simulatedCode)}
-                    className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
+                    className="px-3 py-1 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded-lg text-[11px] transition"
                   >
-                    <Sparkles className="w-3 h-3" />
-                    Tự điền mã: {simulatedCode}
+                    Tự điền mã này
                   </button>
                 )}
               </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                ℹ️ <strong>Lý do chưa nhận mail thật:</strong> Ứng dụng chưa cấu hình SMTP mail gateway, mã OTP được cấp an toàn trực tiếp trên giao diện để bạn kiểm tra luồng đăng nhập một lần (Single-use OTP).
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-200 mb-1.5">
+                Nhập mã OTP đăng nhập 6 chữ số:
+              </label>
               <input
                 type="text"
                 required
@@ -353,16 +379,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 placeholder="123456"
                 value={otpCode}
                 onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-lg font-mono tracking-widest text-center text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                className="w-full px-4 py-3 bg-slate-800 border-2 border-slate-700 rounded-xl text-xl font-mono tracking-widest text-center text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading || otpCode.length !== 6}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 cursor-pointer"
             >
-              <span>Xác thực & Vào ứng dụng</span>
+              <span>Xác thực & Vào ứng dụng ngay</span>
               <CheckCircle2 className="w-4 h-4" />
             </button>
           </form>

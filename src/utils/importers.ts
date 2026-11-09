@@ -1,9 +1,65 @@
 /**
  * Standardized Import Parser and Validator (ADD-13, ADD-14, BR-41, BR-42, BR-43)
+ * Supports Word (.docx), PDF (.pdf), Text (.txt, .md), and JSON (.json)
  */
 
+// @ts-ignore
+import mammoth from 'mammoth';
+import * as pdfjsLib from 'pdfjs-dist';
 import { ImportPreviewItem, ImportReport, IntermediateQuestion, Question } from '../types';
 
+// Set up pdf.js worker
+try {
+  if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
+  }
+} catch (e) {
+  // worker fallback
+}
+
+/**
+ * Extract clean textual content from any uploaded file (.docx, .pdf, .txt, .json)
+ */
+export async function extractTextFromFile(file: File): Promise<string> {
+  const fileName = file.name.toLowerCase();
+
+  // 1. Word Document (.docx)
+  if (fileName.endsWith('.docx')) {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value || '';
+  }
+
+  // 2. PDF Document (.pdf)
+  if (fileName.endsWith('.pdf')) {
+    const arrayBuffer = await file.arrayBuffer();
+    try {
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str || '')
+          .join(' ');
+        fullText += pageText + '\n\n';
+      }
+      return fullText;
+    } catch (err: any) {
+      console.warn('PDF parsing fallback', err);
+      // Fallback: try reading as text
+      return await file.text();
+    }
+  }
+
+  // 3. Plain Text, Markdown, JSON, CSV
+  return await file.text();
+}
+
+/**
+ * Parses and validates raw text into standardized IntermediateQuestion structures
+ */
 export function parseAndValidateImport(
   rawText: string,
   existingQuestions: Question[],
@@ -35,19 +91,20 @@ export function parseAndValidateImport(
     }
   }
 
-  // If JSON parsing was not applicable or yielded nothing, parse textual format (DOCX/TXT)
+  // Textual format parser (DOCX, PDF text, TXT, MD)
   if (intermediateList.length === 0) {
+    // Split into question blocks
     const blocks = trimmed.split(/\n\s*\n|\n(?=(?:Câu\s+\d+|Question\s+\d+|Thẻ\s+\d+|Flashcard\s+\d+):?)/i);
 
     blocks.forEach(block => {
       const text = block.trim();
       if (!text) return;
 
-      // Check if it's a Flashcard block
+      // Check if it's a Flashcard block (Front / Back)
       if (/mặt\s*trước|front\s*:/i.test(text) && /mặt\s*sau|back\s*:/i.test(text)) {
         const frontMatch = text.match(/(?:mặt\s*trước|front):\s*([\s\S]*?)(?=(?:mặt\s*sau|back):)/i);
-        const backMatch = text.match(/(?:mặt\s*sau|back):\s*([\s\S]*?)(?=(?:giải\s*thích|note):|$)/i);
-        const expMatch = text.match(/(?:giải\s*thích|note):\s*([\s\S]*)$/i);
+        const backMatch = text.match(/(?:mặt\s*sau|back):\s*([\s\S]*?)(?=(?:giải\s*thích|note|lưu\s*ý):|$)/i);
+        const expMatch = text.match(/(?:giải\s*thích|note|lưu\s*ý):\s*([\s\S]*)$/i);
 
         intermediateList.push({
           type: 'FLASHCARD',
@@ -73,14 +130,13 @@ export function parseAndValidateImport(
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const optMatch = line.match(/^([A-Fa-f])[\.\)\:\-]\s*(.*)$/);
-        const ansMatch = line.match(/^(?:đáp\s*án|answer|key):\s*([A-Za-z,\s]+)$/i);
-        const expMatch = line.match(/^(?:giải\s*thích|explanation|lưu\s*ý):\s*(.*)$/i);
+        const ansMatch = line.match(/^(?:đáp\s*án|answer|key|correct):\s*([A-Za-z,\s]+)$/i);
+        const expMatch = line.match(/^(?:giải\s*thích|explanation|lưu\s*ý|note):\s*(.*)$/i);
 
         if (ansMatch) {
           correct = ansMatch[1].toUpperCase().split(/[,\s]+/).filter(Boolean);
         } else if (expMatch) {
           explanation = expMatch[1];
-          // Capture remaining lines as explanation
           for (let j = i + 1; j < lines.length; j++) {
             explanation += '\n' + lines[j];
           }
@@ -91,7 +147,7 @@ export function parseAndValidateImport(
             text: optMatch[2]
           });
         } else {
-          // Question content line
+          // Question text
           content += (content ? '\n' : '') + line.replace(/^(?:Câu|Question)\s*\d+[\.\:\-]\s*/i, '');
         }
       }
@@ -99,17 +155,19 @@ export function parseAndValidateImport(
       const isMulti = correct.length > 1;
       const type = options.length > 0 ? (isMulti ? 'MULTI' : 'SINGLE') : 'FLASHCARD';
 
-      intermediateList.push({
-        type,
-        content: content.trim(),
-        options,
-        correct,
-        answer_content: type === 'FLASHCARD' ? explanation || 'Chưa có đáp án mặt sau' : null,
-        explanation: explanation.trim(),
-        topics: defaultTopicId ? [defaultTopicId] : [],
-        difficulty: 2,
-        source: 'DOCX'
-      });
+      if (content.trim()) {
+        intermediateList.push({
+          type,
+          content: content.trim(),
+          options,
+          correct,
+          answer_content: type === 'FLASHCARD' ? explanation || 'Chưa có đáp án mặt sau' : null,
+          explanation: explanation.trim(),
+          topics: defaultTopicId ? [defaultTopicId] : [],
+          difficulty: 2,
+          source: 'DOCX'
+        });
+      }
     });
   }
 

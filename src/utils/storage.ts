@@ -43,7 +43,11 @@ class StorageService {
     } else {
       // Ensure huyhoangpham387@gmail.com is registered as Lead Admin in existing storage
       try {
-        const existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+        let existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+        // Purge old demo accounts
+        const trialEmails = ['admin@certflash.io', 'user@certflash.io', 'phuong.thao@techmail.vn', 'chua.xac.thuc@gmail.com'];
+        existingUsers = existingUsers.filter(u => !trialEmails.includes(u.email.toLowerCase()));
+
         const adminIndex = existingUsers.findIndex(u => u.email.toLowerCase() === 'huyhoangpham387@gmail.com');
         if (adminIndex === -1) {
           existingUsers.unshift({
@@ -56,12 +60,11 @@ class StorageService {
             created_at: 1700000000000,
             last_login_at: Date.now()
           });
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
         } else {
           existingUsers[adminIndex].role = 'ADMIN';
           existingUsers[adminIndex].status = 'ACTIVE';
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
         }
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
       } catch (e) {
         console.error('Error synchronizing admin account', e);
       }
@@ -607,7 +610,8 @@ class StorageService {
     userId: string,
     exam: Exam,
     questions: Question[],
-    durationMinutes: number
+    durationMinutes: number,
+    customPassingScore?: number
   ): MockAttempt {
     const active = this.getActiveMockAttempt(userId);
     if (active) {
@@ -625,6 +629,10 @@ class StorageService {
       version: 1
     }));
 
+    const passing = (typeof customPassingScore === 'number' && customPassingScore > 0)
+      ? customPassingScore
+      : exam.passing_score;
+
     const newAttempt: MockAttempt = {
       id: 'mock-' + Date.now(),
       user_id: userId,
@@ -633,7 +641,7 @@ class StorageService {
       started_at: now,
       deadline_at,
       duration_minutes: durationMinutes,
-      passing_score: exam.passing_score,
+      passing_score: passing,
       total_questions: items.length,
       version: 1,
       items
