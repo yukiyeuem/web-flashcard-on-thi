@@ -40,11 +40,50 @@ class StorageService {
   private init() {
     if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(SEED_USERS));
+    } else {
+      // Ensure huyhoangpham387@gmail.com is registered as Lead Admin in existing storage
+      try {
+        const existingUsers: User[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+        const adminIndex = existingUsers.findIndex(u => u.email.toLowerCase() === 'huyhoangpham387@gmail.com');
+        if (adminIndex === -1) {
+          existingUsers.unshift({
+            id: 'user-admin-huyhoang',
+            email: 'huyhoangpham387@gmail.com',
+            name: 'Huy Hoàng (Lead Admin)',
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            email_verified_at: 1700000000000,
+            created_at: 1700000000000,
+            last_login_at: Date.now()
+          });
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
+        } else {
+          existingUsers[adminIndex].role = 'ADMIN';
+          existingUsers[adminIndex].status = 'ACTIVE';
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(existingUsers));
+        }
+      } catch (e) {
+        console.error('Error synchronizing admin account', e);
+      }
     }
+
     if (!localStorage.getItem(STORAGE_KEYS.CURRENT_USER)) {
-      // Default to active learner
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(SEED_USERS[1]));
+      // Default to Lead Admin huyhoangpham387@gmail.com
+      const adminUser = this.getUsers().find(u => u.email.toLowerCase() === 'huyhoangpham387@gmail.com') || SEED_USERS[0];
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminUser));
+    } else {
+      // If current user was the placeholder admin@certflash.io, switch to huyhoangpham387@gmail.com
+      try {
+        const cur: User = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || '{}');
+        if (cur.email === 'admin@certflash.io') {
+          const adminUser = this.getUsers().find(u => u.email.toLowerCase() === 'huyhoangpham387@gmail.com') || SEED_USERS[0];
+          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(adminUser));
+        }
+      } catch (e) {
+        // ignore
+      }
     }
+
     if (!localStorage.getItem(STORAGE_KEYS.EXAMS)) {
       localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(SEED_EXAMS));
     }
@@ -346,7 +385,7 @@ class StorageService {
   public getTopics(examId: string, userId: string): Topic[] {
     const raw = localStorage.getItem(STORAGE_KEYS.TOPICS);
     const all: Topic[] = raw ? JSON.parse(raw) : [];
-    return all.filter(t => t.exam_id === examId && (t.user_id === userId || !t.user_id));
+    return all.filter(t => t.exam_id === examId && (t.user_id === userId || !t.user_id || t.id.startsWith('topic-')));
   }
 
   public saveTopic(topic: Topic, userId: string): Topic {

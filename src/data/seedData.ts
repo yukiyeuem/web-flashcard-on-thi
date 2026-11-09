@@ -2,9 +2,9 @@ import { Exam, Question, Topic, User, AuditLog } from '../types';
 
 export const SEED_USERS: User[] = [
   {
-    id: 'user-admin-1',
-    email: 'admin@certflash.io',
-    name: 'Quản Trị Viên (Lead Admin)',
+    id: 'user-admin-huyhoang',
+    email: 'huyhoangpham387@gmail.com',
+    name: 'Huy Hoàng (Lead Admin)',
     role: 'ADMIN',
     status: 'ACTIVE',
     email_verified_at: 1700000000000,
@@ -14,7 +14,7 @@ export const SEED_USERS: User[] = [
   {
     id: 'user-learner-1',
     email: 'user@certflash.io',
-    name: 'Hoàng Long (AWS & Azure Candidate)',
+    name: 'Học Viên Demo (AWS & Azure Candidate)',
     role: 'USER',
     status: 'ACTIVE',
     email_verified_at: 1700100000000,
@@ -44,8 +44,8 @@ export const SEED_USERS: User[] = [
 export const SEED_AUDIT_LOGS: AuditLog[] = [
   {
     id: 'log-1',
-    actor_id: 'user-admin-1',
-    actor_email: 'admin@certflash.io',
+    actor_id: 'user-admin-huyhoang',
+    actor_email: 'huyhoangpham387@gmail.com',
     action: 'APPROVE_USER',
     target_id: 'user-learner-1',
     target_email: 'user@certflash.io',
