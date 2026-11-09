@@ -2,14 +2,16 @@ name = "web-flashcard-on-thi"
 compatibility_date = "2024-04-01"
 pages_build_output_dir = "./dist"
 
-# Binding Cloudflare D1 Database
+# Cấu hình thư mục chứa mã nguồn tĩnh sau khi build cho Cloudflare
+[assets]
+directory = "./dist"
+
+# Binding Cloudflare D1 Database cho tài khoản quản trị
 [[d1_databases]]
 binding = "DB"
-database_name = "certflash-db"
-database_id = "YOUR_D1_DATABASE_ID" # Điền ID sau khi chạy lệnh: npx wrangler d1 create certflash-db
+database_name = "cer-oracle"
 
 # Biến môi trường
 [vars]
 ADMIN_EMAIL = "huyhoangpham387@gmail.com"
 RESEND_FROM_EMAIL = "CertFlash <onboarding@resend.dev>"
-# RESEND_API_KEY nên lưu qua lệnh bảo mật: npx wrangler secret put RESEND_API_KEY
