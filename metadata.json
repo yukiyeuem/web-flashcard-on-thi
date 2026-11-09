@@ -1,0 +1,6 @@
+{
+  "name": "CertFlash - Web Flashcard & Thi Thử Chứng Chỉ",
+  "description": "Nền tảng ôn thi chứng chỉ bằng Flashcard, thuật toán lặp ngắt quãng SM-2, thi thử chuẩn quốc tế và quản lý học liệu theo chuẩn BA v1.1",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
