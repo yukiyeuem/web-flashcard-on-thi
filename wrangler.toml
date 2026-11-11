@@ -7,11 +7,11 @@ compatibility_date = "2024-04-01"
 directory = "./dist"
 binding = "ASSETS"
 
-# Binding Cloudflare D1 Database (Bật khi có Database ID dạng UUID từ Cloudflare D1)
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "cer-oracle"
-# database_id = "<DÁN_UUID_DATABASE_ID_TẠI_ĐÂY>"
+# Binding Cloudflare D1 Database cho tài khoản quản trị
+[[d1_databases]]
+binding = "DB"
+database_name = "cer-oracle"
+database_id = "d6f19ac4-a858-4fff-83d0-87eacbddf1c7"
 
 # Biến môi trường
 [vars]

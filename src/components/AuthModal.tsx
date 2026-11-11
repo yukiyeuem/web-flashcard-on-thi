@@ -16,7 +16,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [otpCode, setOtpCode] = useState('');
   const [isEmailSent, setIsEmailSent] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
-  const [inputResendKey, setInputResendKey] = useState(() => localStorage.getItem('certflash_resend_api_key') || '');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,11 +47,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     try {
       setLoading(true);
       storage.registerUser(name, email);
-      const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
-      if (keyToSend) {
-        localStorage.setItem('certflash_resend_api_key', keyToSend);
-      }
-      const res = await storage.requestOtpWithResend(email, 'VERIFY_EMAIL', keyToSend);
+      const res = await storage.requestOtpWithResend(email, 'VERIFY_EMAIL');
       setMode('VERIFY_REGISTER_OTP');
       setOtpCode('');
       if (res.emailSent) {
@@ -61,7 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       } else {
         setIsEmailSent(false);
         setErrorDetail(res.errorDetail || res.message);
-        setError('Chưa gửi được mail qua Resend. Vui lòng kiểm tra lại Resend API Key bên dưới.');
+        setError('Chưa gửi được mail qua Resend. Vui lòng kiểm tra biến môi trường RESEND_API_KEY trên Cloudflare.');
       }
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra khi đăng ký.');
@@ -125,20 +120,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
     try {
       setLoading(true);
-      const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
-      if (keyToSend) {
-        localStorage.setItem('certflash_resend_api_key', keyToSend);
-      }
-      const res = await storage.requestOtpWithResend(normEmail, 'LOGIN', keyToSend);
+      const res = await storage.requestOtpWithResend(normEmail, 'LOGIN');
       setOtpCode('');
       if (res.emailSent) {
         setIsEmailSent(true);
         setErrorDetail(null);
-        setInfo(`✓ Mã OTP 6 số đã được chuyển trực tiếp vào hộp thư Gmail: ${email}. Vui lòng mở Gmail để kiểm tra.`);
+        setInfo(`✓ Mã OTP 6 số đã được gửi trực tiếp vào hộp thư Gmail: ${email}. Vui lòng mở Gmail để kiểm tra.`);
       } else {
         setIsEmailSent(false);
         setErrorDetail(res.errorDetail || res.message);
-        setError('Chưa gửi được mail qua Resend. Vui lòng kiểm tra lại Resend API Key bên dưới.');
+        setError('Chưa gửi được mail qua Resend. Vui lòng kiểm tra biến môi trường RESEND_API_KEY trên Cloudflare.');
       }
       setMode('VERIFY_LOGIN_OTP');
     } catch (err: any) {
@@ -154,11 +145,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setOtpCode('');
     setLoading(true);
     const normEmail = email.trim().toLowerCase();
-    const keyToSend = (inputResendKey || localStorage.getItem('certflash_resend_api_key') || '').trim();
 
     try {
       const purpose = mode === 'VERIFY_REGISTER_OTP' ? 'VERIFY_EMAIL' : 'LOGIN';
-      const res = await storage.requestOtpWithResend(normEmail, purpose, keyToSend);
+      const res = await storage.requestOtpWithResend(normEmail, purpose);
       if (res.emailSent) {
         setIsEmailSent(true);
         setErrorDetail(null);
@@ -166,23 +156,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       } else {
         setIsEmailSent(false);
         setErrorDetail(res.errorDetail || res.message);
-        setError('Chưa gửi được mã OTP qua Resend. Vui lòng kiểm tra lại Resend API Key bên dưới.');
+        setError('Chưa gửi được mã OTP qua Resend. Vui lòng kiểm tra biến môi trường RESEND_API_KEY trên Cloudflare.');
       }
     } catch (err: any) {
       setError(err.message || 'Lỗi khi gửi lại mã OTP.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSaveAndRetryResend = async () => {
-    const key = inputResendKey.trim();
-    if (!key) {
-      setError('Vui lòng nhập API Key Resend (dạng re_...).');
-      return;
-    }
-    localStorage.setItem('certflash_resend_api_key', key);
-    await handleResendNewOtp();
   };
 
   const handleVerifyLoginOtp = (e: React.FormEvent) => {
@@ -305,7 +285,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           </div>
         )}
 
-        {/* Form: LOGIN STEP 1 */}
+        {/* Form: LOGIN STEP 1 - ONLY EMAIL */}
         {mode === 'LOGIN' && (
           <form onSubmit={handleLoginRequestOtp} className="space-y-4">
             <div>
@@ -323,36 +303,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
-            </div>
-
-            {/* Direct Resend Key input */}
-            <div className="p-3 bg-slate-800/80 border border-slate-700/80 rounded-xl space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Resend API Key:</span>
-                </label>
-                {inputResendKey.trim() && (
-                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    ✓ Đã lưu key
-                  </span>
-                )}
-              </div>
-              <input
-                type="password"
-                placeholder="re_123456789... (nếu Cloudflare bị khóa biến)"
-                value={inputResendKey}
-                onChange={e => {
-                  const val = e.target.value.trim();
-                  setInputResendKey(val);
-                  if (val) localStorage.setItem('certflash_resend_api_key', val);
-                  else localStorage.removeItem('certflash_resend_api_key');
-                }}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-              />
-              <p className="text-[10px] text-slate-400 leading-normal">
-                💡 Nhập mã key từ <span className="text-amber-300 font-mono">resend.com</span> để gửi mã xác thực trực tiếp vào Gmail của bạn.
-              </p>
             </div>
 
             <button
@@ -501,34 +451,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     Chi tiết: {errorDetail}
                   </p>
                 )}
-                {/* Direct Resend Key Input */}
-                <div className="pt-2 border-t border-amber-500/30 space-y-1.5">
-                  <label className="text-[10px] font-bold text-amber-200 block">
-                    🔑 Dán Resend API Key của bạn để gửi mã vào Gmail:
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      placeholder="re_123456789..."
-                      value={inputResendKey}
-                      onChange={e => {
-                        const val = e.target.value.trim();
-                        setInputResendKey(val);
-                        if (val) localStorage.setItem('certflash_resend_api_key', val);
-                        else localStorage.removeItem('certflash_resend_api_key');
-                      }}
-                      className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-amber-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveAndRetryResend}
-                      disabled={!inputResendKey.trim() || loading}
-                      className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-black rounded-lg text-[11px] shrink-0 transition cursor-pointer"
-                    >
-                      Gửi lại OTP
-                    </button>
-                  </div>
-                </div>
+                <p className="text-[11px] text-slate-300">
+                  Vui lòng đảm bảo biến <code className="text-amber-300 font-mono">RESEND_API_KEY</code> đã được cấu hình trên Cloudflare Pages.
+                </p>
               </div>
             )}
 

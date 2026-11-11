@@ -7,6 +7,13 @@
     "directory": "./dist",
     "binding": "ASSETS"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cer-oracle",
+      "database_id": "d6f19ac4-a858-4fff-83d0-87eacbddf1c7"
+    }
+  ],
   "vars": {
     "ADMIN_EMAIL": "huyhoangpham387@gmail.com",
     "RESEND_FROM_EMAIL": "CertFlash <onboarding@resend.dev>"
